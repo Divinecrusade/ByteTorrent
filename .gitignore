@@ -12,5 +12,8 @@ _deps
 CMakeUserPresets.json
 out
 
+# VCPKG
+vcpkg_installed
+
 # Visual Studio 2015/2017 cache/options directory
 .vs/
