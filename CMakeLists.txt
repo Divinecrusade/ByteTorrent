@@ -34,6 +34,4 @@ endif()
 
 include(cmake/ModuleUtils.cmake)
 
-add_module_library(bencode)
-
 add_subdirectory(tests)
