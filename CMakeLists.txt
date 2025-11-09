@@ -7,6 +7,8 @@ endif()
 
 project(ByteTorrent CXX)
 
+include(cmake/ModuleTemplate.cmake)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
