@@ -16,12 +16,6 @@ function(add_module_library MODULE_NAME)
         target_sources(${MODULE_NAME} PRIVATE ${MODULE_SOURCES})
     endif()
     
-    target_compile_features(${MODULE_NAME} PUBLIC cxx_std_23)
-    
-    if(MSVC)
-        target_link_libraries(${MODULE_NAME} PUBLIC std)
-    endif()
-
     if(ARGN)
         target_link_libraries(${MODULE_NAME} PUBLIC ${ARGN})
     endif()

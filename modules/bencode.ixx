@@ -21,50 +21,25 @@ export struct Value;
 export using Integer = std::int64_t;
 export using ByteString = std::vector<std::byte>;
 export using List = std::vector<Value>;
-export using Dictionary = std::map<std::string,
+export using Dictionary = std::map<std::string, 
                                    Value>;
 
-export struct Value : std::variant<std::monostate,
-                           Integer, 
-                           ByteString,
-                           List,
-                           Dictionary> {
+export struct Value : std::variant<std::monostate, 
+                                   Integer, 
+                                   ByteString, 
+                                   List, 
+                                   Dictionary> {
   using variant::variant;
 };
 
 namespace {
-enum struct MetaSymbol : int {
-  kIntegerMarker = 'i',
-  kListMarker = 'l',
-  kDictionaryMarker = 'd',
-  kEndMarker = 'e',
-  kDelimiter = ':',
-  kUndefined
-}; 
-std::istream& operator>>(std::istream& in, MetaSymbol& token) {
-  using MetaSymbolType = std::underlying_type_t<MetaSymbol>;
-  switch (in.get()) {
-    case static_cast<MetaSymbolType>(MetaSymbol::kIntegerMarker):
-      token = MetaSymbol::kIntegerMarker;
-      break;
-    case static_cast<MetaSymbolType>(MetaSymbol::kListMarker):
-      token = MetaSymbol::kListMarker;
-      break;
-    case static_cast<MetaSymbolType>(MetaSymbol::kDictionaryMarker):
-      token = MetaSymbol::kDictionaryMarker;
-      break;
-    case static_cast<MetaSymbolType>(MetaSymbol::kEndMarker):
-      token = MetaSymbol::kEndMarker;
-      break;
-    case static_cast<MetaSymbolType>(MetaSymbol::kDelimiter):
-      token = MetaSymbol::kDelimiter;
-      break;
-    default: 
-      token = MetaSymbol::kUndefined;
-      in.unget();
-  }
-  return in;
-}
+namespace meta {
+constexpr int kIntegerMarker = 'i';
+constexpr int kListMarker = 'l';
+constexpr int kDictionaryMarker = 'd';
+constexpr int kEndMarker = 'e';
+constexpr int kDelimiter = ':';
+}  // namespace meta
 
 [[nodiscard]] Value Decode(std::istream& src);
 
@@ -80,15 +55,15 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
   }
 
   Integer result{};
-  MetaSymbol token{};
-  while (src >> token && token != MetaSymbol::kEndMarker) {
+  while (src.peek() != meta::kEndMarker && !src.eof()) {
     int const digit = src.get();
     if (!std::isdigit(digit)) {
       throw std::invalid_argument{"Invalid integer format"};
     }
-    result = result * 10 + digit;
+    result = result * 10 + (digit - '0');
   }
-  if (token != MetaSymbol::kEndMarker) {
+
+  if (src.eof() || src.get() != meta::kEndMarker) {
     throw std::runtime_error{"Unexpected end of stream"};
   }
 
@@ -103,9 +78,7 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
     length = length * 10 + (digit - '0');
   }
 
-  MetaSymbol token{};
-  src >> token;
-  if (token != MetaSymbol::kDelimiter) {
+  if (src.get() != meta::kDelimiter) {
     throw std::invalid_argument{"Expected ':' delimiter in byte string"};
   }
 
@@ -114,8 +87,7 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
            static_cast<std::streamsize>(length));
 
   if (src.gcount() != static_cast<std::streamsize>(length)) {
-    throw std::runtime_error{
-        "Unexpected end of stream while reading byte string"};
+    throw std::runtime_error{"Unexpected end of stream while reading byte string"};
   }
 
   return result;
@@ -123,15 +95,11 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
 
 [[nodiscard]] List DecodeList(std::istream& src) {
   List result{};
-  MetaSymbol token{};
-  while (src >> token && token != MetaSymbol::kEndMarker) {
-    if (token != MetaSymbol::kUndefined) {
-      throw std::invalid_argument{"Unexpected token in list"};
-    }
+  while (src.peek() != meta::kEndMarker) {
     result.push_back(Decode(src));
   }
 
-  if (token != MetaSymbol::kEndMarker) {
+  if (src.get() != meta::kEndMarker) {
     throw std::runtime_error{"Unexpected end of stream while reading list"};
   }
 
@@ -140,13 +108,8 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
 
 [[nodiscard]] Dictionary DecodeDictionary(std::istream& src) {
   Dictionary result{};
-  MetaSymbol token{};
-  while (src >> token && token != MetaSymbol::kEndMarker) {
-    if (token != MetaSymbol::kUndefined) {
-      throw std::invalid_argument{"Expected key in dictionary"};
-    }
-
-    auto key_bytes = std::get<ByteString>(Decode(src));
+  while (src.peek() != meta::kEndMarker) {
+    auto key_bytes{std::get<ByteString>(Decode(src))};
     std::string key(reinterpret_cast<char const*>(key_bytes.data()),
                     key_bytes.size());
 
@@ -156,7 +119,7 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
     }
   }
 
-  if (token != MetaSymbol::kEndMarker) {
+  if (src.get() != meta::kEndMarker) {
     throw std::runtime_error{"Unexpected end of stream while reading dictionary"};
   }
 
@@ -164,39 +127,42 @@ std::istream& operator>>(std::istream& in, MetaSymbol& token) {
 }
 
 [[nodiscard]] Value Decode(std::istream& src) {
-  if (src.eof())
+  if (std::ignore = src.peek(); src.eof()) {
     throw std::runtime_error{"Unexpected end of stream"};
-  if (!src.good())
+  }
+  if (!src.good()) {
     throw std::invalid_argument{"Stream is corrupted"};
-  
-  MetaSymbol token{};
-  if (!(src >> token))
-    throw std::runtime_error{"Unexpected end of stream"};
+  }
 
-  switch (token) {
-    case MetaSymbol::kIntegerMarker:
+  switch (int const next_char = src.peek(); 
+          next_char) {
+    case meta::kIntegerMarker:
+      std::ignore = src.get();
       return DecodeInteger(src);
-    case MetaSymbol::kListMarker:
+    case meta::kListMarker:
+      std::ignore = src.get();
       return DecodeList(src);
-    case MetaSymbol::kDictionaryMarker:
+    case meta::kDictionaryMarker:
+      std::ignore = src.get();
       return DecodeDictionary(src);
-    case MetaSymbol::kUndefined: [[fallthrough]];
     default:
-    {
-      if (std::isdigit(src.peek())) {
-        return DecodeByteString(src);
-      } 
-      else
-        throw std::invalid_argument{"Invalid bencode format"};
-    }
+      if (std::isdigit(next_char)) return DecodeByteString(src);
+      throw std::invalid_argument{"Invalid bencode format"};
   }
 }
-}
+}  // namespace
 
 export [[nodiscard]] Value Decode(std::filesystem::path const& src) {
-  if (!std::filesystem::exists(src)) throw std::runtime_error{"File doesn't existed"};
+  if (!std::filesystem::exists(src)) {
+    throw std::runtime_error{"File doesn't exist"};
+  }
+
   std::ifstream file{src, std::ios::binary};
-  if (!file) throw std::runtime_error{"Cannot open file"};
+
+  if (!file) {
+    throw std::runtime_error{"Cannot open file"};
+  }
+
   return Decode(file);
 }
 
@@ -204,4 +170,4 @@ export [[nodiscard]] Value Decode(std::span<char> src) {
   std::ispanstream sin{src, std::ios::binary};
   return Decode(sin);
 }
-}  // byte_torrent::bencode
+}  // namespace byte_torrent::bencode
