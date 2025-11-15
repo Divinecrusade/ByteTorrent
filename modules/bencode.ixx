@@ -110,10 +110,9 @@ constexpr int kDelimiter = ':';
   Dictionary result{};
   while (src.peek() != meta::kEndMarker) {
     auto key_bytes{std::get<ByteString>(Decode(src))};
-    std::string key(reinterpret_cast<char const*>(key_bytes.data()),
-                    key_bytes.size());
-
-    if (auto [_, inserted] = result.try_emplace(std::move(key), Decode(src));
+    if (auto [_, inserted] = result.try_emplace(
+            {reinterpret_cast<char const*>(key_bytes.data()), key_bytes.size()},
+            Decode(src));
         !inserted) {
       throw std::invalid_argument{"Duplicate key in dictionary"};
     }
@@ -152,7 +151,7 @@ constexpr int kDelimiter = ':';
 }
 }  // namespace
 
-export [[nodiscard]] Value Decode(std::filesystem::path const& src) {
+export [[nodiscard]] Value DecodeFromFile(std::filesystem::path const& src) {
   if (!std::filesystem::exists(src)) {
     throw std::runtime_error{"File doesn't exist"};
   }
@@ -166,8 +165,18 @@ export [[nodiscard]] Value Decode(std::filesystem::path const& src) {
   return Decode(file);
 }
 
-export [[nodiscard]] Value Decode(std::span<char> src) {
-  std::ispanstream sin{src, std::ios::binary};
+export [[nodiscard]] Value DecodeFromSpan(std::span<char const> src) {
+  if (src.empty()) {
+    throw std::invalid_argument{"The range is empty"};
+  }
+  std::ispanstream sin{src};
   return Decode(sin);
+}
+
+export [[nodiscard]] Value DecodeFromString(std::string_view src) {
+  if (src.empty()) {
+    throw std::invalid_argument{"The string is empty"};
+  }
+  return DecodeFromSpan({src.data(), src.size()});
 }
 }  // namespace byte_torrent::bencode

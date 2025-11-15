@@ -5,8 +5,11 @@ import bencode;
 #include <sstream>
 #include <vector>
 #include <string>
+#include <string_view>
 
 using namespace byte_torrent::bencode;
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 class BencodeTest : public ::testing::Test {
  protected:
@@ -31,55 +34,59 @@ class BencodeTest : public ::testing::Test {
 
 // Integer decoding tests
 TEST_F(BencodeTest, DecodePositiveInteger) {
-  std::string data{"i42e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"i42e"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Integer>(result));
   EXPECT_EQ(std::get<Integer>(result), 42);
 }
 
 TEST_F(BencodeTest, DecodeNegativeInteger) {
-  std::string data{"i-42e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"i-42e"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Integer>(result));
   EXPECT_EQ(std::get<Integer>(result), -42);
 }
 
 TEST_F(BencodeTest, DecodeZeroInteger) {
-  std::string data{"i0e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"i0e"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Integer>(result));
   EXPECT_EQ(std::get<Integer>(result), 0);
 }
 
 TEST_F(BencodeTest, DecodeLargeInteger) {
-  std::string data{"i9223372036854775807e"};  // INT64_MAX
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"i9223372036854775807e"};  // INT64_MAX
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Integer>(result));
   EXPECT_EQ(std::get<Integer>(result), INT64_MAX);
 }
 
+TEST(BencodeDecodeFromSpan, DecodesInteger) {
+  std::string data{"i42e"};
+  std::span<char> range{data.data(), data.size()};
+
+  Value result{DecodeFromSpan(range)};
+
+  ASSERT_TRUE(std::holds_alternative<Integer>(result));
+  EXPECT_EQ(std::get<Integer>(result), 42);
+}
+
 // ByteString decoding tests
 TEST_F(BencodeTest, DecodeEmptyByteString) {
-  std::string data{"0:"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"0:"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
   EXPECT_TRUE(std::get<ByteString>(result).empty());
 }
 
 TEST_F(BencodeTest, DecodeSimpleByteString) {
-  std::string data{"5:hello"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"5:hello"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
   auto const& bytes = std::get<ByteString>(result);
@@ -95,8 +102,7 @@ TEST_F(BencodeTest, DecodeByteStringWithBinaryData) {
   content[2] = '\x7F';
   content[3] = '\x80';
   std::string data = "4:" + content;
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
   auto const& bytes = std::get<ByteString>(result);
@@ -109,18 +115,16 @@ TEST_F(BencodeTest, DecodeByteStringWithBinaryData) {
 
 // List decoding tests
 TEST_F(BencodeTest, DecodeEmptyList) {
-  std::string data{"le"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"le"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<List>(result));
   EXPECT_TRUE(std::get<List>(result).empty());
 }
 
 TEST_F(BencodeTest, DecodeListWithIntegers) {
-  std::string data{"li1ei2ei3ee"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"li1ei2ei3ee"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<List>(result));
   auto const& list = std::get<List>(result);
@@ -132,9 +136,8 @@ TEST_F(BencodeTest, DecodeListWithIntegers) {
 }
 
 TEST_F(BencodeTest, DecodeListWithMixedTypes) {
-  std::string data{"li42e4:spam3:egge"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"li42e4:spam3:egge"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<List>(result));
   auto const& list = std::get<List>(result);
@@ -143,18 +146,47 @@ TEST_F(BencodeTest, DecodeListWithMixedTypes) {
   EXPECT_EQ(std::get<Integer>(list[0]), 42);
 
   auto const& str1 = std::get<ByteString>(list[1]);
-  std::string decoded1{reinterpret_cast<char const*>(str1.data()), str1.size()};
+  std::string const decoded1{reinterpret_cast<char const*>(str1.data()), str1.size()};
   EXPECT_EQ(decoded1, "spam");
 
   auto const& str2 = std::get<ByteString>(list[2]);
-  std::string decoded2{reinterpret_cast<char const*>(str2.data()), str2.size()};
+  std::string const decoded2{reinterpret_cast<char const*>(str2.data()), str2.size()};
   EXPECT_EQ(decoded2, "egg");
 }
 
+TEST(BencodeDecodeFromSpan, DecodesByteString) {
+  std::string data{"4:spam"};
+  std::span<char> range{data.data(), data.size()};
+
+  auto const result = DecodeFromSpan(range);
+
+  ASSERT_TRUE(std::holds_alternative<ByteString>(result));
+  auto const& bytes = std::get<ByteString>(result);
+  std::string const decoded{reinterpret_cast<char const*>(bytes.data()),
+                            bytes.size()};
+  EXPECT_EQ(decoded, "spam");
+}
+
+TEST(BencodeDecodeFromSpan, DecodesList) {
+  constexpr std::string_view data{"li42e4:spame"};
+  constexpr std::span<char const> range{data.data(), data.size()};
+
+  auto const result = DecodeFromSpan(range);
+
+  ASSERT_TRUE(std::holds_alternative<List>(result));
+  auto const& list = std::get<List>(result);
+  ASSERT_EQ(list.size(), 2);
+  EXPECT_EQ(std::get<Integer>(list[0]), 42);
+
+  auto const& bytes = std::get<ByteString>(list[1]);
+  std::string const decoded(reinterpret_cast<char const*>(bytes.data()),
+                            bytes.size());
+  EXPECT_EQ(decoded, "spam");
+}
+
 TEST_F(BencodeTest, DecodeNestedLists) {
-  std::string data{"lli1ei2eeli3ei4eee"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"lli1ei2eeli3ei4eee"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<List>(result));
   auto const& outer_list = std::get<List>(result);
@@ -173,31 +205,29 @@ TEST_F(BencodeTest, DecodeNestedLists) {
 
 // Dictionary decoding tests
 TEST_F(BencodeTest, DecodeEmptyDictionary) {
-  std::string data{"de"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"de"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   EXPECT_TRUE(std::get<Dictionary>(result).empty());
 }
 
 TEST_F(BencodeTest, DecodeSimpleDictionary) {
-  std::string data{"d3:cow3:moo4:spam4:eggse"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"d3:cow3:moo4:spam4:eggse"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   auto const& dict = std::get<Dictionary>(result);
   ASSERT_EQ(dict.size(), 2);
 
-  auto cow_it = dict.find("cow");
+  auto const cow_it = dict.find("cow");
   ASSERT_NE(cow_it, dict.end());
   auto const& cow_value = std::get<ByteString>(cow_it->second);
   std::string cow_str{reinterpret_cast<char const*>(cow_value.data()),
                       cow_value.size()};
   EXPECT_EQ(cow_str, "moo");
 
-  auto spam_it = dict.find("spam");
+  auto const spam_it = dict.find("spam");
   ASSERT_NE(spam_it, dict.end());
   auto const& spam_value = std::get<ByteString>(spam_it->second);
   std::string spam_str{reinterpret_cast<char const*>(spam_value.data()),
@@ -206,53 +236,50 @@ TEST_F(BencodeTest, DecodeSimpleDictionary) {
 }
 
 TEST_F(BencodeTest, DecodeDictionaryWithMixedValues) {
-  std::string data{"d3:agei25e4:name5:Alicee"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"d3:agei25e4:name5:Alicee"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   auto const& dict = std::get<Dictionary>(result);
   ASSERT_EQ(dict.size(), 2);
 
-  auto age_it = dict.find("age");
+  auto const age_it = dict.find("age");
   ASSERT_NE(age_it, dict.end());
   EXPECT_EQ(std::get<Integer>(age_it->second), 25);
 
-  auto name_it = dict.find("name");
+  auto const name_it = dict.find("name");
   ASSERT_NE(name_it, dict.end());
   auto const& name_value = std::get<ByteString>(name_it->second);
-  std::string name_str{reinterpret_cast<char const*>(name_value.data()),
-                       name_value.size()};
+  std::string const name_str{reinterpret_cast<char const*>(name_value.data()),
+                             name_value.size()};
   EXPECT_EQ(name_str, "Alice");
 }
 
 TEST_F(BencodeTest, DecodeNestedDictionary) {
-  std::string data{"d4:userd3:agei30e4:name3:Bobee"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"d4:userd3:agei30e4:name3:Bobee"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   auto const& outer_dict = std::get<Dictionary>(result);
   ASSERT_EQ(outer_dict.size(), 1);
 
-  auto user_it = outer_dict.find("user");
+  auto const user_it = outer_dict.find("user");
   ASSERT_NE(user_it, outer_dict.end());
 
   auto const& inner_dict = std::get<Dictionary>(user_it->second);
   ASSERT_EQ(inner_dict.size(), 2);
 
-  auto age_it = inner_dict.find("age");
+  auto const age_it = inner_dict.find("age");
   ASSERT_NE(age_it, inner_dict.end());
   EXPECT_EQ(std::get<Integer>(age_it->second), 30);
 }
 
 // Complex structure test
 TEST_F(BencodeTest, DecodeComplexTorrentLikeStructure) {
-  std::string data{
+  constexpr std::string_view data{
       "d8:announce9:localhost4:infod6:lengthi1024e4:name8:test.txt12:piece "
       "lengthi16384e6:pieces20:01234567890123456789ee"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  auto result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   auto const& torrent = std::get<Dictionary>(result);
@@ -267,10 +294,10 @@ TEST_F(BencodeTest, DecodeComplexTorrentLikeStructure) {
 
 // File-based decoding test
 TEST_F(BencodeTest, DecodeFromFile) {
-  std::string content{"d4:name5:test14:sizei12345ee"};
-  auto file_path = CreateTestFile(content);
+  std::string const content{"d4:name5:test14:sizei12345ee"};
+  auto const file_path = CreateTestFile(content);
 
-  auto result = Decode(file_path);
+  auto const result = DecodeFromFile(file_path);
 
   ASSERT_TRUE(std::holds_alternative<Dictionary>(result));
   auto const& dict = std::get<Dictionary>(result);
@@ -280,68 +307,55 @@ TEST_F(BencodeTest, DecodeFromFile) {
 
 // Error handling tests
 TEST_F(BencodeTest, InvalidIntegerFormat) {
-  std::string data{"i12x34e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-
-  EXPECT_THROW(Decode(std::span{buffer}), std::invalid_argument);
+  EXPECT_THROW(DecodeFromString("i12x34e"), std::invalid_argument);
 }
 
 TEST_F(BencodeTest, MissingIntegerEndMarker) {
-  std::string data{"i123"};
-  std::vector<char> buffer{data.begin(), data.end()};
-
-  EXPECT_THROW(Decode(std::span{buffer}), std::runtime_error);
+  EXPECT_THROW(DecodeFromString("i123"), std::runtime_error);
 }
 
 TEST_F(BencodeTest, InvalidByteStringLength) {
-  std::string data{"5:abc"};  // Length says 5 but only 3 bytes
-  std::vector<char> buffer{data.begin(), data.end()};
-
-  EXPECT_THROW(Decode(std::span{buffer}), std::runtime_error);
+  // Length says 5 but only 3 bytes
+  EXPECT_THROW(DecodeFromString("5:abc"sv), std::runtime_error);
 }
 
 TEST_F(BencodeTest, InvalidByteStringDelimiter) {
-  std::string data{"3;abc"};  // Using ';' instead of ':'
-  std::vector<char> buffer{data.begin(), data.end()};
-
-  EXPECT_THROW(Decode(std::span{buffer}), std::invalid_argument);
+  // Using ';' instead of ':'
+  EXPECT_THROW(DecodeFromString("3;abc"s), std::invalid_argument);
 }
 
 TEST_F(BencodeTest, DuplicateKeyInDictionary) {
-  std::string data{"d3:key5:value3:key6:value2e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-
-  EXPECT_THROW(Decode(std::span{buffer}), std::invalid_argument);
+  EXPECT_THROW(DecodeFromString("d3:key5:value3:key6:value2e"),
+                                std::invalid_argument);
 }
 
 TEST_F(BencodeTest, NonExistentFile) {
-  std::filesystem::path non_existent{"/non/existent/file.bencode"};
-
-  EXPECT_THROW(Decode(non_existent), std::runtime_error);
+  EXPECT_THROW(DecodeFromFile("/non/existent/file.bencode"),
+                              std::runtime_error);
 }
 
-TEST_F(BencodeTest, EmptyStream) {
-  std::string data{""};
-  std::vector<char> buffer{data.begin(), data.end()};
+TEST_F(BencodeTest, EmptyString) {
+  constexpr std::string_view data{""};
+  EXPECT_THROW(DecodeFromString(data), std::invalid_argument);
+}
 
-  EXPECT_THROW(Decode(std::span{buffer}), std::runtime_error);
+TEST(BencodeDecodeFromSpan, ThrowsOnEmptyRange) {
+  EXPECT_THROW(DecodeFromSpan({}), std::invalid_argument);
 }
 
 // Edge case tests
 TEST_F(BencodeTest, DecodeLeadingZeroInInteger) {
-  std::string data{"i-0e"};
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  constexpr std::string_view data{"i-0e"};
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<Integer>(result));
   EXPECT_EQ(std::get<Integer>(result), 0);
 }
 
 TEST_F(BencodeTest, DecodeLargeByteString) {
-  std::string content(1000, 'x');
-  std::string data = "1000:" + content;
-  std::vector<char> buffer{data.begin(), data.end()};
-  auto result = Decode(std::span{buffer});
+  std::string const content(1000, 'x');
+  std::string const data = "1000:" + content;
+  auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
   auto const& bytes = std::get<ByteString>(result);
