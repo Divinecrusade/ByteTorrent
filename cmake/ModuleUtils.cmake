@@ -20,3 +20,19 @@ function(add_module_library MODULE_NAME)
         target_link_libraries(${MODULE_NAME} PUBLIC ${ARGN})
     endif()
 endfunction()
+
+function(add_module_test MODULE_NAME)
+    set(TEST_NAME ${MODULE_NAME}_test)
+    
+    add_executable(${TEST_NAME} ${TEST_NAME}.cpp)
+    
+    target_link_libraries(${TEST_NAME}
+        PRIVATE
+            ${MODULE_NAME}
+            GTest::gtest
+            GTest::gtest_main
+            ${ARGN}
+    )
+    
+    gtest_discover_tests(${TEST_NAME})
+endfunction()
