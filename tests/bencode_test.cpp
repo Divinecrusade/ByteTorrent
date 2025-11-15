@@ -32,6 +32,10 @@ class BencodeTest : public ::testing::Test {
   std::filesystem::path test_dir;
 };
 
+// ============================================================================
+// DECODING
+// ============================================================================
+
 // Integer decoding tests
 TEST_F(BencodeTest, DecodePositiveInteger) {
   constexpr std::string_view data{"i42e"};
@@ -362,4 +366,362 @@ TEST_F(BencodeTest, DecodeLargeByteString) {
   EXPECT_EQ(bytes.size(), 1000);
   EXPECT_TRUE(std::all_of(bytes.begin(), bytes.end(),
                           [](std::byte b) { return b == std::byte{'x'}; }));
+}
+
+// ============================================================================
+// ENCODING
+// ============================================================================
+
+// Integer encoding tests
+TEST_F(BencodeTest, EncodePositiveInteger) {
+  Value const value{Integer{42}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "i42e");
+}
+
+TEST_F(BencodeTest, EncodeNegativeInteger) {
+  Value const value{Integer{-42}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "i-42e");
+}
+
+TEST_F(BencodeTest, EncodeZeroInteger) {
+  Value const value{Integer{0}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "i0e");
+}
+
+TEST_F(BencodeTest, EncodeLargeInteger) {
+  Value const value{Integer{INT64_MAX}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "i9223372036854775807e");
+}
+
+// ByteString encoding tests
+TEST_F(BencodeTest, EncodeEmptyByteString) {
+  Value const value{ByteString{}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "0:");
+}
+
+TEST_F(BencodeTest, EncodeSimpleByteString) {
+  ByteString bytes(5);
+  std::memcpy(bytes.data(), "hello", 5);
+  Value const value{bytes};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "5:hello");
+}
+
+TEST_F(BencodeTest, EncodeByteStringWithBinaryData) {
+  ByteString bytes{std::byte{0x00}, std::byte{0xFF}, std::byte{0x7F},
+                   std::byte{0x80}};
+  Value const value{bytes};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result.size(), 6);  // "4:" + 4 bytes
+  EXPECT_EQ(result.substr(0, 2), "4:");
+  EXPECT_EQ(static_cast<unsigned char>(result[2]), 0x00);
+  EXPECT_EQ(static_cast<unsigned char>(result[3]), 0xFF);
+  EXPECT_EQ(static_cast<unsigned char>(result[4]), 0x7F);
+  EXPECT_EQ(static_cast<unsigned char>(result[5]), 0x80);
+}
+
+// List encoding tests
+TEST_F(BencodeTest, EncodeEmptyList) {
+  Value const value{List{}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "le");
+}
+
+TEST_F(BencodeTest, EncodeListWithIntegers) {
+  List list{};
+  list.push_back(Integer{1});
+  list.push_back(Integer{2});
+  list.push_back(Integer{3});
+  Value const value{list};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "li1ei2ei3ee");
+}
+
+TEST_F(BencodeTest, EncodeListWithMixedTypes) {
+  ByteString spam(4);
+  std::memcpy(spam.data(), "spam", 4);
+
+  ByteString egg(3);
+  std::memcpy(egg.data(), "egg", 3);
+
+  List list{};
+  list.push_back(Integer{42});
+  list.push_back(spam);
+  list.push_back(egg);
+  Value const value{list};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "li42e4:spam3:egge");
+}
+
+TEST_F(BencodeTest, EncodeNestedLists) {
+  List inner1{};
+  inner1.push_back(Integer{1});
+  inner1.push_back(Integer{2});
+
+  List inner2{};
+  inner2.push_back(Integer{3});
+  inner2.push_back(Integer{4});
+
+  List outer{};
+  outer.push_back(inner1);
+  outer.push_back(inner2);
+  Value const value{outer};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "lli1ei2eeli3ei4eee");
+}
+
+// Dictionary encoding tests
+TEST_F(BencodeTest, EncodeEmptyDictionary) {
+  Value const value{Dictionary{}};
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "de");
+}
+
+TEST_F(BencodeTest, EncodeSimpleDictionary) {
+  ByteString moo(3);
+  std::memcpy(moo.data(), "moo", 3);
+
+  ByteString eggs(4);
+  std::memcpy(eggs.data(), "eggs", 4);
+
+  Dictionary dict{};
+  dict["cow"] = moo;
+  dict["spam"] = eggs;
+  Value const value{dict};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "d3:cow3:moo4:spam4:eggse");
+}
+
+TEST_F(BencodeTest, EncodeDictionaryWithMixedValues) {
+  ByteString alice(5);
+  std::memcpy(alice.data(), "Alice", 5);
+
+  Dictionary dict{};
+  dict["age"] = Integer{25};
+  dict["name"] = alice;
+  Value const value{dict};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "d3:agei25e4:name5:Alicee");
+}
+
+TEST_F(BencodeTest, EncodeNestedDictionary) {
+  ByteString bob(3);
+  std::memcpy(bob.data(), "Bob", 3);
+
+  Dictionary inner{};
+  inner["age"] = Integer{30};
+  inner["name"] = bob;
+
+  Dictionary outer{};
+  outer["user"] = inner;
+  Value const value{outer};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "d4:userd3:agei30e4:name3:Bobee");
+}
+
+TEST_F(BencodeTest, EncodeDictionaryKeysAreSorted) {
+  Dictionary dict{};
+  dict["zebra"] = Integer{1};
+  dict["apple"] = Integer{2};
+  dict["mango"] = Integer{3};
+  Value const value{dict};
+
+  auto const result = EncodeIntoString(value);
+  // std::map automatically sorts keys
+  EXPECT_EQ(result, "d5:applei2e5:mangoi3e5:zebrai1ee");
+}
+
+// Complex structure test
+TEST_F(BencodeTest, EncodeComplexTorrentLikeStructure) {
+  ByteString announce(9);
+  std::memcpy(announce.data(), "localhost", 9);
+
+  ByteString name(8);
+  std::memcpy(name.data(), "test.txt", 8);
+
+  ByteString pieces(20);
+  std::memcpy(pieces.data(), "01234567890123456789", 20);
+
+  Dictionary info{};
+  info["length"] = Integer{1024};
+  info["name"] = name;
+  info["piece length"] = Integer{16384};
+  info["pieces"] = pieces;
+
+  Dictionary torrent{};
+  torrent["announce"] = announce;
+  torrent["info"] = info;
+  Value const value{torrent};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(
+      result,
+      "d8:announce9:localhost4:infod6:lengthi1024e4:name8:test.txt12:piece "
+      "lengthi16384e6:pieces20:01234567890123456789ee");
+}
+
+// File encoding test
+TEST_F(BencodeTest, EncodeIntoFile) {
+  ByteString test1(6);
+  std::memcpy(test1.data(), "test1", 5);
+
+  Dictionary dict{};
+  dict["name"] = test1;
+  dict["size"] = Integer{12345};
+  Value const value{dict};
+
+  auto const file_path = test_dir / "encode_test.bencode";
+  EncodeIntoFile(value, file_path);
+
+  // Verify by decoding
+  auto const decoded = DecodeFromFile(file_path);
+  ASSERT_TRUE(std::holds_alternative<Dictionary>(decoded));
+  auto const& result_dict = std::get<Dictionary>(decoded);
+  EXPECT_EQ(std::get<Integer>(result_dict.at("size")), 12345);
+}
+
+// Span encoding test
+TEST_F(BencodeTest, EncodeIntoSpan) {
+  Value const value{Integer{42}};
+
+  std::array<char, 10> buffer{};
+  std::span<char> span{buffer};
+
+  EncodeIntoSpan(value, span);
+
+  std::string_view result{buffer.data(), 4};
+  EXPECT_EQ(result, "i42e");
+}
+
+// Round-trip tests
+TEST_F(BencodeTest, RoundTripInteger) {
+  Value const original{Integer{12345}};
+  auto const encoded = EncodeIntoString(original);
+  auto const decoded = DecodeFromString(encoded);
+
+  ASSERT_TRUE(std::holds_alternative<Integer>(decoded));
+  EXPECT_EQ(std::get<Integer>(decoded), std::get<Integer>(original));
+}
+
+TEST_F(BencodeTest, RoundTripByteString) {
+  ByteString bytes(11);
+  std::memcpy(bytes.data(), "hello world", 11);
+  Value const original{bytes};
+
+  auto const encoded = EncodeIntoString(original);
+  auto const decoded = DecodeFromString(encoded);
+
+  ASSERT_TRUE(std::holds_alternative<ByteString>(decoded));
+  EXPECT_EQ(std::get<ByteString>(decoded), std::get<ByteString>(original));
+}
+
+TEST_F(BencodeTest, RoundTripList) {
+  List list{};
+  list.push_back(Integer{1});
+  list.push_back(Integer{2});
+  list.push_back(Integer{3});
+  Value const original{list};
+
+  auto const encoded = EncodeIntoString(original);
+  auto const decoded = DecodeFromString(encoded);
+
+  ASSERT_TRUE(std::holds_alternative<List>(decoded));
+  auto const& result_list = std::get<List>(decoded);
+  ASSERT_EQ(result_list.size(), 3);
+  EXPECT_EQ(std::get<Integer>(result_list[0]), 1);
+  EXPECT_EQ(std::get<Integer>(result_list[1]), 2);
+  EXPECT_EQ(std::get<Integer>(result_list[2]), 3);
+}
+
+TEST_F(BencodeTest, RoundTripDictionary) {
+  ByteString value1(5);
+  std::memcpy(value1.data(), "value", 5);
+
+  Dictionary dict{};
+  dict["key"] = value1;
+  dict["num"] = Integer{999};
+  Value const original{dict};
+
+  auto const encoded = EncodeIntoString(original);
+  auto const decoded = DecodeFromString(encoded);
+
+  ASSERT_TRUE(std::holds_alternative<Dictionary>(decoded));
+  auto const& result_dict = std::get<Dictionary>(decoded);
+  EXPECT_EQ(result_dict.size(), 2);
+  EXPECT_EQ(std::get<Integer>(result_dict.at("num")), 999);
+}
+
+TEST_F(BencodeTest, RoundTripComplexStructure) {
+  ByteString str1(4);
+  std::memcpy(str1.data(), "test", 4);
+
+  List inner_list{};
+  inner_list.push_back(Integer{1});
+  inner_list.push_back(str1);
+
+  Dictionary inner_dict{};
+  inner_dict["x"] = Integer{100};
+
+  List outer_list{};
+  outer_list.push_back(inner_list);
+  outer_list.push_back(inner_dict);
+
+  Dictionary outer_dict{};
+  outer_dict["data"] = outer_list;
+  outer_dict["version"] = Integer{2};
+  Value const original{outer_dict};
+
+  auto const encoded = EncodeIntoString(original);
+  auto const decoded = DecodeFromString(encoded);
+
+  ASSERT_TRUE(std::holds_alternative<Dictionary>(decoded));
+  auto const& result = std::get<Dictionary>(decoded);
+  EXPECT_EQ(std::get<Integer>(result.at("version")), 2);
+}
+
+// Error handling tests
+TEST_F(BencodeTest, EncodeMonostateThrows) {
+  Value const value{std::monostate{}};
+  EXPECT_THROW(EncodeIntoString(value), std::invalid_argument);
+}
+
+TEST_F(BencodeTest, EncodeIntoNonExistentDirectory) {
+  Value const value{Integer{42}};
+  auto const bad_path = std::filesystem::path{"/non/existent/dir/file.bencode"};
+  EXPECT_THROW(EncodeIntoFile(value, bad_path), std::runtime_error);
+}
+
+// Edge cases
+TEST_F(BencodeTest, EncodeLargeByteString) {
+  ByteString bytes(1000, std::byte{'x'});
+  Value const value{bytes};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result.size(), 1005);  // "1000:" + 1000 bytes
+  EXPECT_EQ(result.substr(0, 5), "1000:");
+}
+
+TEST_F(BencodeTest, EncodeEmptyDictionaryKey) {
+  ByteString empty_value(5);
+  std::memcpy(empty_value.data(), "value", 5);
+
+  Dictionary dict{};
+  dict[""] = empty_value;  // Empty key
+  Value const value{dict};
+
+  auto const result = EncodeIntoString(value);
+  EXPECT_EQ(result, "d0:5:valuee");
 }
