@@ -16,10 +16,15 @@ export struct Value
 };
 
 namespace meta {
-constexpr int kIntegerMarker = 'i';
-constexpr int kListMarker = 'l';
-constexpr int kDictionaryMarker = 'd';
-constexpr int kEndMarker = 'e';
-constexpr int kDelimiter = ':';
+template <std::integral T = int>
+constexpr T kIntegerMarker = 'i';
+template <std::integral T = int>
+constexpr T kListMarker = 'l';
+template <std::integral T = int>
+constexpr T kDictionaryMarker = 'd';
+template <std::integral T = int>
+constexpr T kEndMarker = 'e';
+template <std::integral T = int>
+constexpr T kDelimiter = ':';
 }  // namespace byte_torrent::bencode::meta
 }  // namespace byte_torrent::bencode

@@ -1,7 +1,7 @@
 export module bencode:encode;
 
 import std;
-import :types;  // Import types partition
+import :types;
 
 namespace byte_torrent::bencode {
 namespace {
@@ -16,30 +16,30 @@ void Encode(Value const& src, std::ostream& dst) {
                    throw std::invalid_argument{"Cannot encode monostate"};
                  },
                  [&dst](Integer value) {
-                   dst << static_cast<char>(meta::kIntegerMarker) << value
-                       << static_cast<char>(meta::kEndMarker);
+                   dst << meta::kIntegerMarker<char> << value
+                       << meta::kEndMarker<char>;
                  },
                  [&dst](ByteString const& value) {
-                   dst << value.size() << static_cast<char>(meta::kDelimiter);
+                   dst << value.size() << meta::kDelimiter<char>;
                    dst.write(reinterpret_cast<char const*>(value.data()),
                              static_cast<std::streamsize>(value.size()));
                  },
                  [&dst](List const& value) {
-                   dst << static_cast<char>(meta::kListMarker);
+                   dst << meta::kListMarker<char>;
                    for (auto const& element : value) {
                      Encode(element, dst);
                    }
-                   dst << static_cast<char>(meta::kEndMarker);
+                   dst << meta::kEndMarker<char>;
                  },
                  [&dst](Dictionary const& value) {
-                   dst << static_cast<char>(meta::kDictionaryMarker);
+                   dst << meta::kDictionaryMarker<char>;
                    for (auto const& [key, val] : value) {
-                     dst << key.size() << static_cast<char>(meta::kDelimiter);
+                     dst << key.size() << meta::kDelimiter<char>;
                      dst.write(key.data(),
                                static_cast<std::streamsize>(key.size()));
                      Encode(val, dst);
                    }
-                   dst << static_cast<char>(meta::kEndMarker);
+                   dst << meta::kEndMarker<char>;
                  }},
       src);
 

@@ -1,7 +1,7 @@
 export module bencode:decode;
 
 import std;
-import :types;  // Import types partition
+import :types;
 
 namespace byte_torrent::bencode {
 namespace {
@@ -19,7 +19,7 @@ namespace {
   }
 
   Integer result{};
-  while (src.peek() != meta::kEndMarker && !src.eof()) {
+  while (src.peek() != meta::kEndMarker<> && !src.eof()) {
     int const digit = src.get();
     if (!std::isdigit(digit)) {
       throw std::invalid_argument{"Invalid integer format"};
@@ -27,7 +27,7 @@ namespace {
     result = result * 10 + (digit - '0');
   }
 
-  if (src.eof() || src.get() != meta::kEndMarker) {
+  if (src.eof() || src.get() != meta::kEndMarker<>) {
     throw std::runtime_error{"Unexpected end of stream"};
   }
 
@@ -42,7 +42,7 @@ namespace {
     length = length * 10 + (digit - '0');
   }
 
-  if (src.get() != meta::kDelimiter) {
+  if (src.get() != meta::kDelimiter<>) {
     throw std::invalid_argument{"Expected ':' delimiter in byte string"};
   }
 
@@ -60,11 +60,11 @@ namespace {
 
 [[nodiscard]] List DecodeList(std::istream& src) {
   List result{};
-  while (src.peek() != meta::kEndMarker) {
+  while (src.peek() != meta::kEndMarker<>) {
     result.push_back(Decode(src));
   }
 
-  if (src.get() != meta::kEndMarker) {
+  if (src.get() != meta::kEndMarker<>) {
     throw std::runtime_error{"Unexpected end of stream while reading list"};
   }
 
@@ -73,7 +73,7 @@ namespace {
 
 [[nodiscard]] Dictionary DecodeDictionary(std::istream& src) {
   Dictionary result{};
-  while (src.peek() != meta::kEndMarker) {
+  while (src.peek() != meta::kEndMarker<>) {
     auto key_bytes{std::get<ByteString>(Decode(src))};
     if (auto [_, inserted] = result.try_emplace(
             {reinterpret_cast<char const*>(key_bytes.data()), key_bytes.size()},
@@ -83,7 +83,7 @@ namespace {
     }
   }
 
-  if (src.get() != meta::kEndMarker) {
+  if (src.get() != meta::kEndMarker<>) {
     throw std::runtime_error{
         "Unexpected end of stream while reading dictionary"};
   }
@@ -100,13 +100,13 @@ namespace {
   }
 
   switch (int const next_char = src.peek(); next_char) {
-    case meta::kIntegerMarker:
+    case meta::kIntegerMarker<>:
       std::ignore = src.get();
       return DecodeInteger(src);
-    case meta::kListMarker:
+    case meta::kListMarker<>:
       std::ignore = src.get();
       return DecodeList(src);
-    case meta::kDictionaryMarker:
+    case meta::kDictionaryMarker<>:
       std::ignore = src.get();
       return DecodeDictionary(src);
     default:
