@@ -1,19 +1,6 @@
 export module bencode;
 
-import <cstdint>;
-import <span>;
-import <vector>;
-import <map>;
-import <string_view>;
-import <variant>;
-import <filesystem>;
-import <iostream>;
-import <fstream>;
-import <spanstream>;
-import <unordered_map>;
-import <functional>;
-import <type_traits>;
-import <utility>;
+import std;
 
 namespace byte_torrent::bencode {
 export struct Value;
