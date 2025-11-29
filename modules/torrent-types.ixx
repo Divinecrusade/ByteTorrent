@@ -4,7 +4,7 @@ import std;
 
 namespace byte_torrent::torrent {
 // SHA1 hash is always 20 bytes
-static constexpr std::size_t kSha1HashSize = 20u;
+constexpr std::size_t kSha1HashSize = 20u;
 export using Sha1Hash = std::array<std::byte, kSha1HashSize>;
 
 export struct FileInfo {

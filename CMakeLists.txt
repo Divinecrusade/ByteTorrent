@@ -35,6 +35,10 @@ endif()
 include(cmake/ModuleUtils.cmake)
 
 add_module_library(bencode)
+
+find_package(OpenSSL REQUIRED)
 add_module_library(torrent)
+target_link_libraries(torrent PRIVATE OpenSSL::Crypto)
+target_link_libraries(torrent PRIVATE bencode)
 
 add_subdirectory(tests)

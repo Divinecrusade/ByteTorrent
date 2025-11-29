@@ -1,9 +1,14 @@
 #include <gtest/gtest.h>
+import bencode;
 import torrent;
+#include <array>
 #include <chrono>
+#include <span>
+#include <string>
 #include <vector>
 
 using namespace byte_torrent::torrent;
+using namespace byte_torrent::bencode;
 using namespace std::chrono_literals;
 
 // ============================================================================
@@ -233,4 +238,174 @@ TEST_F(TorrentTypesTest, ExpectedPieceCount) {
 
   // Edge case: zero total length
   EXPECT_EQ(validation::ExpectedPieceCount(0, 16384), 0);
+}
+
+// ============================================================================
+// Test Fixture
+// ============================================================================
+
+class TorrentHashTest : public ::testing::Test {
+ protected:
+  static std::vector<std::byte> ToBytes(std::string_view str) {
+    std::vector<std::byte> result(str.size());
+    std::transform(str.begin(), str.end(), result.begin(),
+                   [](char c) { return static_cast<std::byte>(c); });
+    return result;
+  }
+};
+
+// ============================================================================
+// SHA1 Calculation Tests - Known Test Vectors
+// ============================================================================
+
+TEST_F(TorrentHashTest, Sha1EmptyString) {
+  // SHA1("") = da39a3ee5e6b4b0d3255bfef95601890afd80709
+  auto const hash = CalculateSha1(std::span<char const>{});
+  EXPECT_EQ(Sha1ToHex(hash), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+}
+
+TEST_F(TorrentHashTest, Sha1SimpleString) {
+  // SHA1("abc") = a9993e364706816aba3e25717850c26c9cd0d89d
+  std::string_view const input{"abc"};
+  auto const hash = CalculateSha1(std::span{input.data(), input.size()});
+  EXPECT_EQ(Sha1ToHex(hash), "a9993e364706816aba3e25717850c26c9cd0d89d");
+}
+
+TEST_F(TorrentHashTest, Sha1LongerString) {
+  // SHA1("The quick brown fox jumps over the lazy dog")
+  // = 2fd4e1c67a2d28fced849ee1bb76e7391b93eb12
+  std::string_view const input{"The quick brown fox jumps over the lazy dog"};
+  auto const hash = CalculateSha1(std::span{input.data(), input.size()});
+  EXPECT_EQ(Sha1ToHex(hash), "2fd4e1c67a2d28fced849ee1bb76e7391b93eb12");
+}
+
+TEST_F(TorrentHashTest, Sha1ByteSpanOverload) {
+  auto const bytes = ToBytes("abc");
+  auto const hash = CalculateSha1(std::span<std::byte const>{bytes});
+  EXPECT_EQ(Sha1ToHex(hash), "a9993e364706816aba3e25717850c26c9cd0d89d");
+}
+
+// ============================================================================
+// Hex Conversion Tests
+// ============================================================================
+
+TEST_F(TorrentHashTest, Sha1ToHexFormat) {
+  Sha1Hash hash{};
+  std::ranges::fill(hash, std::byte{0x00});
+  EXPECT_EQ(Sha1ToHex(hash), "0000000000000000000000000000000000000000");
+
+  std::ranges::fill(hash, std::byte{0xFF});
+  EXPECT_EQ(Sha1ToHex(hash), "ffffffffffffffffffffffffffffffffffffffff");
+
+  hash[0] = std::byte{0x0A};
+  hash[19] = std::byte{0xBC};
+  EXPECT_EQ(Sha1ToHex(hash), "0affffffffffffffffffffffffffffffffffffbc");
+}
+
+TEST_F(TorrentHashTest, Sha1FromHexValid) {
+  auto const hash = Sha1FromHex("a9993e364706816aba3e25717850c26c9cd0d89d");
+
+  EXPECT_EQ(hash[0], std::byte{0xA9});
+  EXPECT_EQ(hash[1], std::byte{0x99});
+  EXPECT_EQ(hash[19], std::byte{0x9D});
+}
+
+TEST_F(TorrentHashTest, Sha1FromHexUpperCase) {
+  auto const lower = Sha1FromHex("a9993e364706816aba3e25717850c26c9cd0d89d");
+  auto const upper = Sha1FromHex("A9993E364706816ABA3E25717850C26C9CD0D89D");
+  EXPECT_EQ(lower, upper);
+}
+
+TEST_F(TorrentHashTest, Sha1HexRoundTrip) {
+  std::string_view const original{"da39a3ee5e6b4b0d3255bfef95601890afd80709"};
+  auto const hash = Sha1FromHex(original);
+  auto const hex = Sha1ToHex(hash);
+  EXPECT_EQ(hex, original);
+}
+
+// ============================================================================
+// Hex Conversion Error Handling
+// ============================================================================
+
+TEST_F(TorrentHashTest, Sha1FromHexInvalidLength) {
+  EXPECT_THROW(Sha1FromHex("a9993e"), std::invalid_argument);
+  EXPECT_THROW(Sha1FromHex("a9993e364706816aba3e25717850c26c9cd0d89d00"),
+               std::invalid_argument);
+  EXPECT_THROW(Sha1FromHex(""), std::invalid_argument);
+}
+
+TEST_F(TorrentHashTest, Sha1FromHexInvalidCharacters) {
+  EXPECT_THROW(Sha1FromHex("g9993e364706816aba3e25717850c26c9cd0d89d"),
+               std::invalid_argument);
+  EXPECT_THROW(Sha1FromHex("a9993e364706816aba3e25717850c26c9cd0d8!!"),
+               std::invalid_argument);
+}
+
+// ============================================================================
+// Info Hash Calculation Tests
+// ============================================================================
+
+TEST_F(TorrentHashTest, CalculateInfoHashSimpleDictionary) {
+  // Create a simple info dictionary
+  ByteString name(4);
+  std::memcpy(name.data(), "test", 4);
+
+  Dictionary info{};
+  info["name"] = name;
+  info["piece length"] = Integer{16384};
+  info["length"] = Integer{1024};
+
+  auto const hash = CalculateInfoHash(info);
+
+  // Verify by manually encoding and hashing
+  auto const encoded = EncodeIntoString(Value{info});
+  auto const expected =
+      CalculateSha1(std::span{encoded.data(), encoded.size()});
+
+  EXPECT_EQ(hash, expected);
+}
+
+TEST_F(TorrentHashTest, CalculateInfoHashDeterministic) {
+  ByteString name(8);
+  std::memcpy(name.data(), "test.txt", 8);
+
+  Dictionary info{};
+  info["name"] = name;
+  info["piece length"] = Integer{262144};
+  info["length"] = Integer{999999};
+
+  auto const hash1 = CalculateInfoHash(info);
+  auto const hash2 = CalculateInfoHash(info);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
+TEST_F(TorrentHashTest, CalculateInfoHashDifferentContentDifferentHash) {
+  ByteString name1(5);
+  std::memcpy(name1.data(), "file1", 5);
+
+  ByteString name2(5);
+  std::memcpy(name2.data(), "file2", 5);
+
+  Dictionary info1{};
+  info1["name"] = name1;
+  info1["length"] = Integer{100};
+
+  Dictionary info2{};
+  info2["name"] = name2;
+  info2["length"] = Integer{100};
+
+  EXPECT_NE(CalculateInfoHash(info1), CalculateInfoHash(info2));
+}
+
+TEST_F(TorrentHashTest, CalculateInfoHashEmptyDictionary) {
+  Dictionary const empty{};
+  auto const hash = CalculateInfoHash(empty);
+
+  // SHA1("de") - empty bencoded dictionary
+  std::string_view const encoded{"de"};
+  auto const expected =
+      CalculateSha1(std::span{encoded.data(), encoded.size()});
+
+  EXPECT_EQ(hash, expected);
 }

@@ -2,6 +2,7 @@
     "name": "byte-torrent",
     "version": "0.1.0",
     "dependencies": [
-        "gtest"
+        "gtest",
+        "openssl"
     ]
 }
