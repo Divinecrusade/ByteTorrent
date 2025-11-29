@@ -35,5 +35,6 @@ endif()
 include(cmake/ModuleUtils.cmake)
 
 add_module_library(bencode)
+add_module_library(torrent)
 
 add_subdirectory(tests)
