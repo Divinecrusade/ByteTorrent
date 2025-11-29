@@ -6,6 +6,10 @@ import torrent;
 #include <span>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 using namespace byte_torrent::torrent;
 using namespace byte_torrent::bencode;
@@ -408,4 +412,394 @@ TEST_F(TorrentHashTest, CalculateInfoHashEmptyDictionary) {
       CalculateSha1(std::span{encoded.data(), encoded.size()});
 
   EXPECT_EQ(hash, expected);
+}
+
+// ============================================================================
+// Test Fixture
+// ============================================================================
+
+class TorrentParseTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    test_dir_ = std::filesystem::temp_directory_path() / "torrent_parse_tests";
+    std::filesystem::create_directories(test_dir_);
+  }
+
+  void TearDown() override { std::filesystem::remove_all(test_dir_); }
+
+  static ByteString ToByteString(std::string_view str) {
+    ByteString result(str.size());
+    std::memcpy(result.data(), str.data(), str.size());
+    return result;
+  }
+
+  // Creates 20-byte pieces data (1 piece hash)
+  static ByteString MakePieces(std::size_t piece_count = 1) {
+    ByteString pieces(piece_count * 20);
+    std::ranges::fill(pieces, std::byte{0xAB});
+    return pieces;
+  }
+
+  static Dictionary MakeMinimalInfo(std::string_view name = "test.txt",
+                                    Integer length = 1024) {
+    Dictionary info{};
+    info["name"] = ToByteString(name);
+    info["piece length"] = Integer{16384};
+    info["pieces"] = MakePieces();
+    info["length"] = length;
+    return info;
+  }
+
+  static Dictionary MakeMinimalTorrent(
+      std::string_view announce = "http://tracker.example.com/announce") {
+    Dictionary torrent{};
+    torrent["announce"] = ToByteString(announce);
+    torrent["info"] = MakeMinimalInfo();
+    return torrent;
+  }
+
+  std::filesystem::path CreateTestFile(std::string const& content) {
+    static int counter = 0;
+    auto path = test_dir_ / ("test_" + std::to_string(counter++) + ".torrent");
+    std::ofstream file{path, std::ios::binary};
+    file << content;
+    return path;
+  }
+
+  std::filesystem::path test_dir_;
+};
+
+// ============================================================================
+// Single-File Torrent Tests
+// ============================================================================
+
+TEST_F(TorrentParseTest, ParseMinimalSingleFileTorrent) {
+  auto const encoded = EncodeIntoString(Value{MakeMinimalTorrent()});
+  auto const torrent = ParseFromString(encoded);
+
+  EXPECT_EQ(torrent.announce, "http://tracker.example.com/announce");
+  EXPECT_EQ(torrent.info.name, "test.txt");
+  EXPECT_EQ(torrent.info.piece_length, 16384);
+  EXPECT_EQ(torrent.info.PieceCount(), 1);
+  EXPECT_TRUE(torrent.info.IsSingleFile());
+  EXPECT_FALSE(torrent.info.IsMultiFile());
+  ASSERT_TRUE(torrent.info.length.has_value());
+  EXPECT_EQ(*torrent.info.length, 1024);
+}
+
+TEST_F(TorrentParseTest, ParseSingleFileTorrentInfoHash) {
+  auto dict = MakeMinimalTorrent();
+  auto const encoded = EncodeIntoString(Value{dict});
+  auto const torrent = ParseFromString(encoded);
+
+  // Verify info_hash matches manual calculation
+  auto const& info_dict = std::get<Dictionary>(dict["info"]);
+  auto const expected_hash = CalculateInfoHash(info_dict);
+
+  EXPECT_EQ(torrent.info_hash, expected_hash);
+}
+
+TEST_F(TorrentParseTest, ParseFromFile) {
+  auto const content = EncodeIntoString(Value{MakeMinimalTorrent()});
+  auto const path = CreateTestFile(content);
+
+  auto const torrent = ParseFromFile(path);
+
+  EXPECT_EQ(torrent.announce, "http://tracker.example.com/announce");
+  EXPECT_EQ(torrent.info.name, "test.txt");
+}
+
+TEST_F(TorrentParseTest, ParseFromSpan) {
+  auto const content = EncodeIntoString(Value{MakeMinimalTorrent()});
+  std::span<char const> span{content.data(), content.size()};
+
+  auto const torrent = ParseFromSpan(span);
+
+  EXPECT_EQ(torrent.announce, "http://tracker.example.com/announce");
+}
+
+// ============================================================================
+// Multi-File Torrent Tests
+// ============================================================================
+
+TEST_F(TorrentParseTest, ParseMultiFileTorrent) {
+  Dictionary file1{};
+  file1["length"] = Integer{100};
+  file1["path"] = List{ToByteString("file1.txt")};
+
+  Dictionary file2{};
+  file2["length"] = Integer{200};
+  file2["path"] = List{ToByteString("subdir"), ToByteString("file2.txt")};
+
+  Dictionary info{};
+  info["name"] = ToByteString("my_torrent");
+  info["piece length"] = Integer{16384};
+  info["pieces"] = MakePieces();
+  info["files"] = List{file1, file2};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  EXPECT_TRUE(torrent.info.IsMultiFile());
+  EXPECT_FALSE(torrent.info.IsSingleFile());
+  ASSERT_TRUE(torrent.info.files.has_value());
+  ASSERT_EQ(torrent.info.files->size(), 2);
+
+  EXPECT_EQ((*torrent.info.files)[0].path, "file1.txt");
+  EXPECT_EQ((*torrent.info.files)[0].length, 100);
+
+  EXPECT_EQ((*torrent.info.files)[1].path, "subdir/file2.txt");
+  EXPECT_EQ((*torrent.info.files)[1].length, 200);
+
+  EXPECT_EQ(torrent.TotalLength(), 300);
+}
+
+TEST_F(TorrentParseTest, ParseMultiFileTorrentWithMd5sum) {
+  Dictionary file{};
+  file["length"] = Integer{1024};
+  file["path"] = List{ToByteString("file.bin")};
+  file["md5sum"] = ToByteString("d41d8cd98f00b204e9800998ecf8427e");
+
+  Dictionary info{};
+  info["name"] = ToByteString("torrent_with_md5");
+  info["piece length"] = Integer{16384};
+  info["pieces"] = MakePieces();
+  info["files"] = List{file};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  ASSERT_TRUE(torrent.info.files.has_value());
+  ASSERT_EQ(torrent.info.files->size(), 1);
+  ASSERT_TRUE((*torrent.info.files)[0].md5sum.has_value());
+  EXPECT_EQ(*(*torrent.info.files)[0].md5sum,
+            "d41d8cd98f00b204e9800998ecf8427e");
+}
+
+// ============================================================================
+// Optional Metadata Tests
+// ============================================================================
+
+TEST_F(TorrentParseTest, ParseTorrentWithAllOptionalFields) {
+  auto root = MakeMinimalTorrent();
+  root["comment"] = ToByteString("Test comment");
+  root["created by"] = ToByteString("ByteTorrent/1.0");
+  root["creation date"] = Integer{1700000000};
+  root["encoding"] = ToByteString("UTF-8");
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  ASSERT_TRUE(torrent.comment.has_value());
+  EXPECT_EQ(*torrent.comment, "Test comment");
+
+  ASSERT_TRUE(torrent.created_by.has_value());
+  EXPECT_EQ(*torrent.created_by, "ByteTorrent/1.0");
+
+  ASSERT_TRUE(torrent.creation_date.has_value());
+  auto const expected_time = std::chrono::system_clock::from_time_t(1700000000);
+  EXPECT_EQ(*torrent.creation_date, expected_time);
+
+  ASSERT_TRUE(torrent.encoding.has_value());
+  EXPECT_EQ(*torrent.encoding, "UTF-8");
+}
+
+TEST_F(TorrentParseTest, ParseTorrentWithAnnounceList) {
+  auto root = MakeMinimalTorrent();
+
+  List tier1{ToByteString("http://tracker1.com"),
+             ToByteString("http://tracker2.com")};
+  List tier2{ToByteString("http://backup.com")};
+  root["announce-list"] = List{tier1, tier2};
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  ASSERT_TRUE(torrent.announce_list.has_value());
+  ASSERT_EQ(torrent.announce_list->size(), 2);
+
+  EXPECT_EQ((*torrent.announce_list)[0].size(), 2);
+  EXPECT_EQ((*torrent.announce_list)[0][0], "http://tracker1.com");
+  EXPECT_EQ((*torrent.announce_list)[0][1], "http://tracker2.com");
+
+  EXPECT_EQ((*torrent.announce_list)[1].size(), 1);
+  EXPECT_EQ((*torrent.announce_list)[1][0], "http://backup.com");
+}
+
+TEST_F(TorrentParseTest, ParseTorrentWithPrivateFlag) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["private"] = Integer{1};
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  ASSERT_TRUE(torrent.info.is_private.has_value());
+  EXPECT_TRUE(*torrent.info.is_private);
+}
+
+TEST_F(TorrentParseTest, ParseTorrentPrivateFlagZero) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["private"] = Integer{0};
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  ASSERT_TRUE(torrent.info.is_private.has_value());
+  EXPECT_FALSE(*torrent.info.is_private);
+}
+
+// ============================================================================
+// Pieces Parsing Tests
+// ============================================================================
+
+TEST_F(TorrentParseTest, ParseMultiplePieces) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["pieces"] = MakePieces(5);
+
+  auto const encoded = EncodeIntoString(Value{root});
+  auto const torrent = ParseFromString(encoded);
+
+  EXPECT_EQ(torrent.info.PieceCount(), 5);
+}
+
+// ============================================================================
+// Error Handling Tests
+// ============================================================================
+
+TEST_F(TorrentParseTest, ThrowsOnNonDictionaryRoot) {
+  auto const encoded = EncodeIntoString(Value{Integer{42}});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingAnnounce) {
+  Dictionary root{};
+  root["info"] = MakeMinimalInfo();
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingInfo) {
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingName) {
+  Dictionary info{};
+  info["piece length"] = Integer{16384};
+  info["pieces"] = MakePieces();
+  info["length"] = Integer{1024};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingPieceLength) {
+  Dictionary info{};
+  info["name"] = ToByteString("test.txt");
+  info["pieces"] = MakePieces();
+  info["length"] = Integer{1024};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingPieces) {
+  Dictionary info{};
+  info["name"] = ToByteString("test.txt");
+  info["piece length"] = Integer{16384};
+  info["length"] = Integer{1024};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnMissingLengthAndFiles) {
+  Dictionary info{};
+  info["name"] = ToByteString("test.txt");
+  info["piece length"] = Integer{16384};
+  info["pieces"] = MakePieces();
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnInvalidPiecesLength) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["pieces"] = ByteString(19, std::byte{0xAB});  // Not multiple of 20
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnNegativeLength) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["length"] = Integer{-100};
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnNegativePieceLength) {
+  auto root = MakeMinimalTorrent();
+  auto& info = std::get<Dictionary>(root["info"]);
+  info["piece length"] = Integer{-16384};
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnEmptyFilePath) {
+  Dictionary file{};
+  file["length"] = Integer{100};
+  file["path"] = List{};  // Empty path
+
+  Dictionary info{};
+  info["name"] = ToByteString("torrent");
+  info["piece length"] = Integer{16384};
+  info["pieces"] = MakePieces();
+  info["files"] = List{file};
+
+  Dictionary root{};
+  root["announce"] = ToByteString("http://tracker.com/announce");
+  root["info"] = info;
+
+  auto const encoded = EncodeIntoString(Value{root});
+  EXPECT_THROW(ParseFromString(encoded), std::invalid_argument);
+}
+
+TEST_F(TorrentParseTest, ThrowsOnNonExistentFile) {
+  EXPECT_THROW(ParseFromFile("/non/existent/file.torrent"), std::runtime_error);
 }
