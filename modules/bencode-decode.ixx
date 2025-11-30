@@ -75,9 +75,8 @@ namespace {
   Dictionary result{};
   while (src.peek() != meta::kEndMarker<>) {
     auto key_bytes{std::get<ByteString>(Decode(src))};
-    if (auto [_, inserted] = result.try_emplace(
-            {reinterpret_cast<char const*>(key_bytes.data()), key_bytes.size()},
-            Decode(src));
+    if (auto [_, inserted] =
+            result.try_emplace(ToString(key_bytes), Decode(src));
         !inserted) {
       throw std::invalid_argument{"Duplicate key in dictionary"};
     }

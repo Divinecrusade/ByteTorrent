@@ -104,10 +104,7 @@ TEST_F(BencodeDecoding, DecodeSimpleByteString) {
   auto const result = DecodeFromString(data);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
-  auto const& bytes = std::get<ByteString>(result);
-  std::string decoded{reinterpret_cast<char const*>(bytes.data()),
-                      bytes.size()};
-  EXPECT_EQ(decoded, "hello");
+  EXPECT_EQ(ToString(std::get<ByteString>(result)), "hello");
 }
 
 TEST_F(BencodeDecoding, DecodeByteStringWithBinaryData) {
@@ -174,16 +171,8 @@ TEST_F(BencodeDecoding, DecodeListWithMixedTypes) {
   ASSERT_EQ(list.size(), 3);
 
   EXPECT_EQ(std::get<Integer>(list[0]), 42);
-
-  auto const& str1 = std::get<ByteString>(list[1]);
-  std::string const decoded1{reinterpret_cast<char const*>(str1.data()),
-                             str1.size()};
-  EXPECT_EQ(decoded1, "spam");
-
-  auto const& str2 = std::get<ByteString>(list[2]);
-  std::string const decoded2{reinterpret_cast<char const*>(str2.data()),
-                             str2.size()};
-  EXPECT_EQ(decoded2, "egg");
+  EXPECT_EQ(ToString(std::get<ByteString>(list[1])), "spam");
+  EXPECT_EQ(ToString(std::get<ByteString>(list[2])), "egg");
 }
 
 TEST_F(BencodeDecoding, DecodeNestedLists) {
@@ -227,17 +216,11 @@ TEST_F(BencodeDecoding, DecodeSimpleDictionary) {
 
   auto const cow_it = dict.find("cow");
   ASSERT_NE(cow_it, dict.end());
-  auto const& cow_value = std::get<ByteString>(cow_it->second);
-  std::string cow_str{reinterpret_cast<char const*>(cow_value.data()),
-                      cow_value.size()};
-  EXPECT_EQ(cow_str, "moo");
+  EXPECT_EQ(ToString(std::get<ByteString>(cow_it->second)), "moo");
 
   auto const spam_it = dict.find("spam");
   ASSERT_NE(spam_it, dict.end());
-  auto const& spam_value = std::get<ByteString>(spam_it->second);
-  std::string spam_str{reinterpret_cast<char const*>(spam_value.data()),
-                       spam_value.size()};
-  EXPECT_EQ(spam_str, "eggs");
+  EXPECT_EQ(ToString(std::get<ByteString>(spam_it->second)), "eggs");
 }
 
 TEST_F(BencodeDecoding, DecodeDictionaryWithMixedValues) {
@@ -254,10 +237,7 @@ TEST_F(BencodeDecoding, DecodeDictionaryWithMixedValues) {
 
   auto const name_it = dict.find("name");
   ASSERT_NE(name_it, dict.end());
-  auto const& name_value = std::get<ByteString>(name_it->second);
-  std::string const name_str{reinterpret_cast<char const*>(name_value.data()),
-                             name_value.size()};
-  EXPECT_EQ(name_str, "Alice");
+  EXPECT_EQ(ToString(std::get<ByteString>(name_it->second)), "Alice");
 }
 
 TEST_F(BencodeDecoding, DecodeNestedDictionary) {
@@ -342,10 +322,7 @@ TEST_F(BencodeDecoding, DecodeByteStringFromSpan) {
   auto const result = DecodeFromSpan(range);
 
   ASSERT_TRUE(std::holds_alternative<ByteString>(result));
-  auto const& bytes = std::get<ByteString>(result);
-  std::string const decoded{reinterpret_cast<char const*>(bytes.data()),
-                            bytes.size()};
-  EXPECT_EQ(decoded, "spam");
+  EXPECT_EQ(ToString(std::get<ByteString>(result)), "spam");
 }
 
 TEST_F(BencodeDecoding, DecodeListFromSpan) {
@@ -358,11 +335,7 @@ TEST_F(BencodeDecoding, DecodeListFromSpan) {
   auto const& list = std::get<List>(result);
   ASSERT_EQ(list.size(), 2);
   EXPECT_EQ(std::get<Integer>(list[0]), 42);
-
-  auto const& bytes = std::get<ByteString>(list[1]);
-  std::string const decoded(reinterpret_cast<char const*>(bytes.data()),
-                            bytes.size());
-  EXPECT_EQ(decoded, "spam");
+  EXPECT_EQ(ToString(std::get<ByteString>(list[1])), "spam");
 }
 
 TEST_F(BencodeDecoding, ThrowsOnEmptyRangeFromSpan) {
@@ -444,10 +417,7 @@ TEST_F(BencodeEncoding, EncodeEmptyByteString) {
 }
 
 TEST_F(BencodeEncoding, EncodeSimpleByteString) {
-  ByteString bytes(5);
-  std::memcpy(bytes.data(), "hello", 5);
-  Value const value{bytes};
-
+  Value const value{ToByteString("hello")};
   auto const result = EncodeIntoString(value);
   EXPECT_EQ(result, "5:hello");
 }
@@ -486,10 +456,7 @@ TEST_F(BencodeEncoding, EncodeEmptyList) {
 }
 
 TEST_F(BencodeEncoding, EncodeListWithIntegers) {
-  List list{};
-  list.push_back(Integer{1});
-  list.push_back(Integer{2});
-  list.push_back(Integer{3});
+  List list{Integer{1}, Integer{2}, Integer{3}};
   Value const value{list};
 
   auto const result = EncodeIntoString(value);
@@ -497,16 +464,7 @@ TEST_F(BencodeEncoding, EncodeListWithIntegers) {
 }
 
 TEST_F(BencodeEncoding, EncodeListWithMixedTypes) {
-  ByteString spam(4);
-  std::memcpy(spam.data(), "spam", 4);
-
-  ByteString egg(3);
-  std::memcpy(egg.data(), "egg", 3);
-
-  List list{};
-  list.push_back(Integer{42});
-  list.push_back(spam);
-  list.push_back(egg);
+  List list{Integer{42}, ToByteString("spam"), ToByteString("egg")};
   Value const value{list};
 
   auto const result = EncodeIntoString(value);
@@ -514,17 +472,9 @@ TEST_F(BencodeEncoding, EncodeListWithMixedTypes) {
 }
 
 TEST_F(BencodeEncoding, EncodeNestedLists) {
-  List inner1{};
-  inner1.push_back(Integer{1});
-  inner1.push_back(Integer{2});
-
-  List inner2{};
-  inner2.push_back(Integer{3});
-  inner2.push_back(Integer{4});
-
-  List outer{};
-  outer.push_back(inner1);
-  outer.push_back(inner2);
+  List inner1{Integer{1}, Integer{2}};
+  List inner2{Integer{3}, Integer{4}};
+  List outer{inner1, inner2};
   Value const value{outer};
 
   auto const result = EncodeIntoString(value);
@@ -542,15 +492,9 @@ TEST_F(BencodeEncoding, EncodeEmptyDictionary) {
 }
 
 TEST_F(BencodeEncoding, EncodeSimpleDictionary) {
-  ByteString moo(3);
-  std::memcpy(moo.data(), "moo", 3);
-
-  ByteString eggs(4);
-  std::memcpy(eggs.data(), "eggs", 4);
-
   Dictionary dict{};
-  dict["cow"] = moo;
-  dict["spam"] = eggs;
+  dict["cow"] = ToByteString("moo");
+  dict["spam"] = ToByteString("eggs");
   Value const value{dict};
 
   auto const result = EncodeIntoString(value);
@@ -558,12 +502,9 @@ TEST_F(BencodeEncoding, EncodeSimpleDictionary) {
 }
 
 TEST_F(BencodeEncoding, EncodeDictionaryWithMixedValues) {
-  ByteString alice(5);
-  std::memcpy(alice.data(), "Alice", 5);
-
   Dictionary dict{};
   dict["age"] = Integer{25};
-  dict["name"] = alice;
+  dict["name"] = ToByteString("Alice");
   Value const value{dict};
 
   auto const result = EncodeIntoString(value);
@@ -571,12 +512,9 @@ TEST_F(BencodeEncoding, EncodeDictionaryWithMixedValues) {
 }
 
 TEST_F(BencodeEncoding, EncodeNestedDictionary) {
-  ByteString bob(3);
-  std::memcpy(bob.data(), "Bob", 3);
-
   Dictionary inner{};
   inner["age"] = Integer{30};
-  inner["name"] = bob;
+  inner["name"] = ToByteString("Bob");
 
   Dictionary outer{};
   outer["user"] = inner;
@@ -599,11 +537,8 @@ TEST_F(BencodeEncoding, EncodeDictionaryKeysAreSorted) {
 }
 
 TEST_F(BencodeEncoding, EncodeEmptyDictionaryKey) {
-  ByteString empty_value(5);
-  std::memcpy(empty_value.data(), "value", 5);
-
   Dictionary dict{};
-  dict[""] = empty_value;  // Empty key
+  dict[""] = ToByteString("value");
   Value const value{dict};
 
   auto const result = EncodeIntoString(value);
@@ -615,23 +550,14 @@ TEST_F(BencodeEncoding, EncodeEmptyDictionaryKey) {
 // ----------------------------------------------------------------------------
 
 TEST_F(BencodeEncoding, EncodeComplexTorrentLikeStructure) {
-  ByteString announce(9);
-  std::memcpy(announce.data(), "localhost", 9);
-
-  ByteString name(8);
-  std::memcpy(name.data(), "test.txt", 8);
-
-  ByteString pieces(20);
-  std::memcpy(pieces.data(), "01234567890123456789", 20);
-
   Dictionary info{};
   info["length"] = Integer{1024};
-  info["name"] = name;
+  info["name"] = ToByteString("test.txt");
   info["piece length"] = Integer{16384};
-  info["pieces"] = pieces;
+  info["pieces"] = ToByteString("01234567890123456789");
 
   Dictionary torrent{};
-  torrent["announce"] = announce;
+  torrent["announce"] = ToByteString("localhost");
   torrent["info"] = info;
   Value const value{torrent};
 
@@ -647,11 +573,8 @@ TEST_F(BencodeEncoding, EncodeComplexTorrentLikeStructure) {
 // ----------------------------------------------------------------------------
 
 TEST_F(BencodeEncoding, EncodeIntoFile) {
-  ByteString test1(6);
-  std::memcpy(test1.data(), "test1", 5);
-
   Dictionary dict{};
-  dict["name"] = test1;
+  dict["name"] = ToByteString("test1");
   dict["size"] = Integer{12345};
   Value const value{dict};
 
@@ -701,9 +624,7 @@ TEST_F(BencodeEncoding, RoundTripInteger) {
 }
 
 TEST_F(BencodeEncoding, RoundTripByteString) {
-  ByteString bytes(11);
-  std::memcpy(bytes.data(), "hello world", 11);
-  Value const original{bytes};
+  Value const original{ToByteString("hello world")};
 
   auto const encoded = EncodeIntoString(original);
   auto const decoded = DecodeFromString(encoded);
@@ -713,10 +634,7 @@ TEST_F(BencodeEncoding, RoundTripByteString) {
 }
 
 TEST_F(BencodeEncoding, RoundTripList) {
-  List list{};
-  list.push_back(Integer{1});
-  list.push_back(Integer{2});
-  list.push_back(Integer{3});
+  List list{Integer{1}, Integer{2}, Integer{3}};
   Value const original{list};
 
   auto const encoded = EncodeIntoString(original);
@@ -731,11 +649,8 @@ TEST_F(BencodeEncoding, RoundTripList) {
 }
 
 TEST_F(BencodeEncoding, RoundTripDictionary) {
-  ByteString value1(5);
-  std::memcpy(value1.data(), "value", 5);
-
   Dictionary dict{};
-  dict["key"] = value1;
+  dict["key"] = ToByteString("value");
   dict["num"] = Integer{999};
   Value const original{dict};
 
@@ -749,19 +664,12 @@ TEST_F(BencodeEncoding, RoundTripDictionary) {
 }
 
 TEST_F(BencodeEncoding, RoundTripComplexStructure) {
-  ByteString str1(4);
-  std::memcpy(str1.data(), "test", 4);
-
-  List inner_list{};
-  inner_list.push_back(Integer{1});
-  inner_list.push_back(str1);
+  List inner_list{Integer{1}, ToByteString("test")};
 
   Dictionary inner_dict{};
   inner_dict["x"] = Integer{100};
 
-  List outer_list{};
-  outer_list.push_back(inner_list);
-  outer_list.push_back(inner_dict);
+  List outer_list{inner_list, inner_dict};
 
   Dictionary outer_dict{};
   outer_dict["data"] = outer_list;

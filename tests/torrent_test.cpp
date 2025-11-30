@@ -3,13 +3,12 @@ import bencode;
 import torrent;
 #include <array>
 #include <chrono>
-#include <span>
-#include <string>
-#include <vector>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
+#include <vector>
 
 using namespace byte_torrent::torrent;
 using namespace byte_torrent::bencode;
@@ -351,11 +350,8 @@ TEST_F(TorrentHashTest, Sha1FromHexInvalidCharacters) {
 
 TEST_F(TorrentHashTest, CalculateInfoHashSimpleDictionary) {
   // Create a simple info dictionary
-  ByteString name(4);
-  std::memcpy(name.data(), "test", 4);
-
   Dictionary info{};
-  info["name"] = name;
+  info["name"] = ToByteString("test");
   info["piece length"] = Integer{16384};
   info["length"] = Integer{1024};
 
@@ -370,11 +366,8 @@ TEST_F(TorrentHashTest, CalculateInfoHashSimpleDictionary) {
 }
 
 TEST_F(TorrentHashTest, CalculateInfoHashDeterministic) {
-  ByteString name(8);
-  std::memcpy(name.data(), "test.txt", 8);
-
   Dictionary info{};
-  info["name"] = name;
+  info["name"] = ToByteString("test.txt");
   info["piece length"] = Integer{262144};
   info["length"] = Integer{999999};
 
@@ -385,18 +378,12 @@ TEST_F(TorrentHashTest, CalculateInfoHashDeterministic) {
 }
 
 TEST_F(TorrentHashTest, CalculateInfoHashDifferentContentDifferentHash) {
-  ByteString name1(5);
-  std::memcpy(name1.data(), "file1", 5);
-
-  ByteString name2(5);
-  std::memcpy(name2.data(), "file2", 5);
-
   Dictionary info1{};
-  info1["name"] = name1;
+  info1["name"] = ToByteString("file1");
   info1["length"] = Integer{100};
 
   Dictionary info2{};
-  info2["name"] = name2;
+  info2["name"] = ToByteString("file2");
   info2["length"] = Integer{100};
 
   EXPECT_NE(CalculateInfoHash(info1), CalculateInfoHash(info2));
@@ -426,12 +413,6 @@ class TorrentParseTest : public ::testing::Test {
   }
 
   void TearDown() override { std::filesystem::remove_all(test_dir_); }
-
-  static ByteString ToByteString(std::string_view str) {
-    ByteString result(str.size());
-    std::memcpy(result.data(), str.data(), str.size());
-    return result;
-  }
 
   // Creates 20-byte pieces data (1 piece hash)
   static ByteString MakePieces(std::size_t piece_count = 1) {

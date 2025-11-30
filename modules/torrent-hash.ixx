@@ -119,5 +119,4 @@ export [[nodiscard]] Sha1Hash Sha1FromHex(std::string_view hex) {
 
   return result;
 }
-
 }  // namespace byte_torrent::torrent

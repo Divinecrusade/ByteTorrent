@@ -7,9 +7,6 @@ import :hash;
 
 namespace byte_torrent::torrent {
 namespace {
-[[nodiscard]] std::string ByteStringToString(bencode::ByteString const& bytes) {
-  return {reinterpret_cast<char const*>(bytes.data()), bytes.size()};
-}
 
 [[nodiscard]] bencode::ByteString const& GetByteString(
     bencode::Dictionary const& dict, std::string_view key) {
@@ -114,7 +111,7 @@ template <typename T, typename Extractor>
     if (!std::holds_alternative<bencode::ByteString>(component)) {
       throw std::invalid_argument{"Path component must be a byte string"};
     }
-    path /= ByteStringToString(std::get<bencode::ByteString>(component));
+    path /= bencode::ToString(std::get<bencode::ByteString>(component));
   }
 
   FileInfo info{.path = std::move(path),
@@ -122,7 +119,7 @@ template <typename T, typename Extractor>
 
   info.md5sum = GetOptional<std::string>(
       file_dict, "md5sum", [](bencode::Value const& v) {
-        return ByteStringToString(std::get<bencode::ByteString>(v));
+        return bencode::ToString(std::get<bencode::ByteString>(v));
       });
 
   return info;
@@ -131,7 +128,7 @@ template <typename T, typename Extractor>
 [[nodiscard]] Info ParseInfo(bencode::Dictionary const& info_dict) {
   Info info{};
 
-  info.name = ByteStringToString(GetByteString(info_dict, "name"));
+  info.name = bencode::ToString(GetByteString(info_dict, "name"));
 
   auto const piece_length = GetInteger(info_dict, "piece length");
   if (piece_length <= 0) {
@@ -203,7 +200,7 @@ template <typename T, typename Extractor>
         throw std::invalid_argument{"Tracker URL must be a byte string"};
       }
       tier.push_back(
-          ByteStringToString(std::get<bencode::ByteString>(tracker_value)));
+          bencode::ToString(std::get<bencode::ByteString>(tracker_value)));
     }
     result.push_back(std::move(tier));
   }
@@ -220,7 +217,7 @@ template <typename T, typename Extractor>
   Torrent torrent{};
 
   // Required: announce
-  torrent.announce = ByteStringToString(GetByteString(root_dict, "announce"));
+  torrent.announce = bencode::ToString(GetByteString(root_dict, "announce"));
 
   // Required: info
   auto const& info_dict = GetDictionary(root_dict, "info");
@@ -244,19 +241,19 @@ template <typename T, typename Extractor>
   // Optional: comment
   torrent.comment = GetOptional<std::string>(
       root_dict, "comment", [](bencode::Value const& v) {
-        return ByteStringToString(std::get<bencode::ByteString>(v));
+        return bencode::ToString(std::get<bencode::ByteString>(v));
       });
 
   // Optional: created by
   torrent.created_by = GetOptional<std::string>(
       root_dict, "created by", [](bencode::Value const& v) {
-        return ByteStringToString(std::get<bencode::ByteString>(v));
+        return bencode::ToString(std::get<bencode::ByteString>(v));
       });
 
   // Optional: encoding
   torrent.encoding = GetOptional<std::string>(
       root_dict, "encoding", [](bencode::Value const& v) {
-        return ByteStringToString(std::get<bencode::ByteString>(v));
+        return bencode::ToString(std::get<bencode::ByteString>(v));
       });
 
   return torrent;
