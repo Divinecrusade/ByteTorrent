@@ -41,4 +41,6 @@ add_module_library(torrent)
 target_link_libraries(torrent PRIVATE OpenSSL::Crypto)
 target_link_libraries(torrent PRIVATE bencode)
 
+add_module_library(peer_wire)
+
 add_subdirectory(tests)

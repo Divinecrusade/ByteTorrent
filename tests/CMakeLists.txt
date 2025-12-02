@@ -4,3 +4,4 @@ include(GoogleTest)
 
 add_module_test(bencode)
 add_module_test(torrent)
+add_module_test(peer_wire)
