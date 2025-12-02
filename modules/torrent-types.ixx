@@ -45,9 +45,9 @@ export struct Info {
     if (!files.has_value()) {
       return 0;
     }
-    return std::accumulate(
-        files->begin(), files->end(), std::uint64_t{0},
-        [](std::uint64_t acc, FileInfo const& f) { return acc + f.length; });
+    return std::accumulate(files->begin(), files->end(), std::uint64_t{0},
+                           [](std::uint64_t acc, FileInfo const& f) 
+                           { return acc + f.length; });
   }
 
   [[nodiscard]] std::size_t PieceCount() const noexcept {

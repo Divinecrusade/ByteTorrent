@@ -7,9 +7,8 @@ import :hash;
 
 namespace byte_torrent::torrent {
 namespace {
-
-[[nodiscard]] bencode::ByteString const& GetByteString(
-    bencode::Dictionary const& dict, std::string_view key) {
+[[nodiscard]] bencode::ByteString const& GetByteString(bencode::Dictionary const& dict, 
+                                                       std::string_view key) {
   auto const it = dict.find(std::string{key});
   if (it == dict.end()) {
     throw std::invalid_argument{
@@ -36,8 +35,8 @@ namespace {
   return std::get<bencode::Integer>(it->second);
 }
 
-[[nodiscard]] bencode::Dictionary const& GetDictionary(
-    bencode::Dictionary const& dict, std::string_view key) {
+[[nodiscard]] bencode::Dictionary const& GetDictionary(bencode::Dictionary const& dict, 
+                                                       std::string_view key) {
   auto const it = dict.find(std::string{key});
   if (it == dict.end()) {
     throw std::invalid_argument{
@@ -74,12 +73,10 @@ template <typename T, typename Extractor>
   return extractor(it->second);
 }
 
-[[nodiscard]] std::vector<Sha1Hash> ParsePieces(
-    bencode::ByteString const& raw_pieces) {
-  if (!validation::IsValidPiecesData(
-          std::span{raw_pieces.data(), raw_pieces.size()})) {
-    throw std::invalid_argument{
-        "Pieces data length must be a multiple of 20 bytes"};
+[[nodiscard]] std::vector<Sha1Hash> ParsePieces(bencode::ByteString const& raw_pieces) {
+  if (!validation::IsValidPiecesData(std::span{raw_pieces.data(), 
+                                     raw_pieces.size()})) {
+    throw std::invalid_argument{"Pieces data length must be a multiple of 20 bytes"};
   }
 
   std::vector<Sha1Hash> result;
@@ -127,19 +124,19 @@ template <typename T, typename Extractor>
 
 [[nodiscard]] Info ParseInfo(bencode::Dictionary const& info_dict) {
   Info info{};
-
   info.name = bencode::ToString(GetByteString(info_dict, "name"));
 
   auto const piece_length = GetInteger(info_dict, "piece length");
   if (piece_length <= 0) {
     throw std::invalid_argument{"Piece length must be positive"};
   }
-  info.piece_length = static_cast<std::uint64_t>(piece_length);
 
+  info.piece_length = static_cast<std::uint64_t>(piece_length);
   info.pieces = ParsePieces(GetByteString(info_dict, "pieces"));
 
   // Single-file vs multi-file mode
-  if (auto const it = info_dict.find("length"); it != info_dict.end()) {
+  if (auto const it = info_dict.find("length"); 
+      it != info_dict.end()) {
     // Single-file mode
     if (!std::holds_alternative<bencode::Integer>(it->second)) {
       throw std::invalid_argument{"Field 'length' must be an integer"};
@@ -149,8 +146,9 @@ template <typename T, typename Extractor>
       throw std::invalid_argument{"Length cannot be negative"};
     }
     info.length = static_cast<std::uint64_t>(length);
-  } else if (auto const files_it = info_dict.find("files");
-             files_it != info_dict.end()) {
+  } 
+  else if (auto const files_it = info_dict.find("files");
+           files_it != info_dict.end()) {
     // Multi-file mode
     if (!std::holds_alternative<bencode::List>(files_it->second)) {
       throw std::invalid_argument{"Field 'files' must be a list"};
@@ -167,7 +165,8 @@ template <typename T, typename Extractor>
       files.push_back(ParseFileInfo(std::get<bencode::Dictionary>(file_value)));
     }
     info.files = std::move(files);
-  } else {
+  } 
+  else {
     throw std::invalid_argument{
         "Info must contain either 'length' or 'files' field"};
   }

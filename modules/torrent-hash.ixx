@@ -1,6 +1,7 @@
 export module torrent:hash;
 
 import std;
+import <cassert>;
 import bencode;
 import :types;
 
@@ -22,9 +23,7 @@ namespace {
 class Sha1Hasher {
  public:
   Sha1Hasher() : ctx_{EVP_MD_CTX_new()} {
-    if (ctx_ == nullptr) {
-      throw std::runtime_error{"Failed to create EVP_MD_CTX"};
-    }
+    assert(ctx_);
     if (EVP_DigestInit_ex(ctx_, EVP_sha1(), nullptr) != 1) {
       EVP_MD_CTX_free(ctx_);
       throw std::runtime_error{"Failed to initialize SHA1 context"};
@@ -32,9 +31,8 @@ class Sha1Hasher {
   }
 
   ~Sha1Hasher() {
-    if (ctx_ != nullptr) {
-      EVP_MD_CTX_free(ctx_);
-    }
+    assert(ctx_);
+    EVP_MD_CTX_free(ctx_);
   }
 
   Sha1Hasher(Sha1Hasher const&) = delete;
@@ -54,9 +52,10 @@ class Sha1Hasher {
 
   [[nodiscard]] Sha1Hash Finalize() {
     Sha1Hash result{};
-    unsigned int len{};
-    if (EVP_DigestFinal_ex(
-            ctx_, reinterpret_cast<unsigned char*>(result.data()), &len) != 1) {
+    if (unsigned int len{};
+        EVP_DigestFinal_ex(ctx_, 
+                           reinterpret_cast<unsigned char*>(result.data()), 
+                           &len) != 1) {
       throw std::runtime_error{"SHA1 finalize failed"};
     }
     return result;
