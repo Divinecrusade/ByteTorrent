@@ -65,3 +65,6 @@ target_link_libraries(torrent_client PRIVATE piece_manager)
 target_link_libraries(torrent_client PRIVATE peer_manager)
 
 add_subdirectory(tests)
+
+add_executable(byte_torrent src/main.cpp)
+target_link_libraries(byte_torrent PRIVATE torrent_client)
