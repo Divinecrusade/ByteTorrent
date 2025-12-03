@@ -36,8 +36,8 @@ include(cmake/ModuleUtils.cmake)
 
 add_module_library(bencode)
 
-find_package(OpenSSL REQUIRED)
 add_module_library(torrent)
+find_package(OpenSSL REQUIRED)
 target_link_libraries(torrent PRIVATE OpenSSL::Crypto)
 target_link_libraries(torrent PRIVATE bencode)
 
@@ -67,4 +67,9 @@ target_link_libraries(torrent_client PRIVATE peer_manager)
 add_subdirectory(tests)
 
 add_executable(byte_torrent src/main.cpp)
+find_package(asio CONFIG REQUIRED)
 target_link_libraries(byte_torrent PRIVATE torrent_client)
+target_link_libraries(byte_torrent PRIVATE asio::asio)
+if(WIN32)
+    target_link_libraries(byte_torrent PRIVATE ws2_32 mswsock)
+endif()

@@ -807,7 +807,7 @@ export [[nodiscard]] FormattedProgress FormatProgress(ClientStats const& stats) 
 
   // Format ETA
   if (stats.eta == std::chrono::seconds::max()) {
-    fmt.eta = "∞";
+    fmt.eta = "n/a";
   } else {
     auto const secs = stats.eta.count();
     if (secs < 60) {
@@ -846,7 +846,7 @@ export [[nodiscard]] FormattedProgress FormatProgress(ClientStats const& stats) 
 export void PrintProgress(ClientStats const& stats) {
   auto const fmt = FormatProgress(stats);
 
-  std::print("[{}] {} / {} ({}) | ↓ {} ↑ {} | Peers: {} | ETA: {}\n",
+  std::print("[{}] {} / {} ({}) | Download speed {} | Upload speed {} | Peers: {} | ETA: {}\n",
              fmt.state,
              fmt.downloaded,
              fmt.total_size,
