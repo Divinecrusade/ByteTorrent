@@ -43,4 +43,8 @@ target_link_libraries(torrent PRIVATE bencode)
 
 add_module_library(peer_wire)
 
+add_module_library(piece_manager)
+target_link_libraries(piece_manager PRIVATE torrent)
+target_link_libraries(piece_manager PRIVATE peer_wire)
+
 add_subdirectory(tests)
