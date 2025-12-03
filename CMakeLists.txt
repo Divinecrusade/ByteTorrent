@@ -56,5 +56,12 @@ add_module_library(tracker)
 target_link_libraries(tracker PRIVATE bencode)
 target_link_libraries(tracker PRIVATE peer_wire)
 
+add_module_library(torrent_client)
+target_link_libraries(torrent_client PRIVATE bencode)
+target_link_libraries(torrent_client PRIVATE torrent)
+target_link_libraries(torrent_client PRIVATE peer_wire)
+target_link_libraries(torrent_client PRIVATE tracker)
+target_link_libraries(torrent_client PRIVATE piece_manager)
+target_link_libraries(torrent_client PRIVATE peer_manager)
 
 add_subdirectory(tests)
