@@ -43,4 +43,9 @@ target_link_libraries(torrent PRIVATE bencode)
 
 add_module_library(peer_wire)
 
+add_module_library(tracker)
+target_link_libraries(tracker PRIVATE bencode)
+target_link_libraries(tracker PRIVATE peer_wire)
+
+
 add_subdirectory(tests)
