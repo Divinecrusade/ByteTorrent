@@ -31,8 +31,8 @@ export class SequentialSelector final : public IPieceSelector {
       peer_wire::Bitfield const& peer_bitfield,
       std::function<PieceState(std::uint32_t)> const& get_state,
       std::function<PiecePriority(std::uint32_t)> const& get_priority) override {
-    
-    std::size_t const piece_count{peer_bitfield.BitCount()};
+    // Use actual piece count, not bitfield size (bitfield may have padding)
+    std::size_t const piece_count{peer_bitfield.CountPieces()};
 
     // First pass: find critical priority pieces
     for (std::uint32_t i = 0; i < piece_count; ++i) {

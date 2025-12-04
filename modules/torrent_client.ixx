@@ -264,7 +264,7 @@ export class TorrentClient : public peer_manager::IPeerManagerHandler {
                 TorrentClientConfig config = {})
       : torrent_{std::move(torrent)},
         config_{std::move(config)},
-        local_peer_id_{peer_wire::GeneratePeerId("-BT0001-")},
+        local_peer_id_{peer_wire::GeneratePeerId("-qB4500-")},
         piece_manager_{torrent_.info, MakePieceManagerConfig()},
         peer_manager_{torrent_, piece_manager_, local_peer_id_,
                       MakePeerManagerConfig()},

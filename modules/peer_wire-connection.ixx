@@ -349,13 +349,19 @@ export class PeerConnection : public std::enable_shared_from_this<PeerConnection
   }
 
   void OnReadComplete(std::error_code ec, std::size_t bytes_read) {
+    std::println("[SOCKET] {} - OnReadComplete: ec={} bytes={}",
+                 endpoint_.ToString(), ec ? ec.message() : "ok", bytes_read);
+
     if (ec) {
+      std::println("[SOCKET] {} - Read error: {}", endpoint_.ToString(),
+                   ec.message());
       HandleError(ec);
       return;
     }
 
     if (bytes_read == 0) {
-      // Connection closed
+      std::println("[SOCKET] {} - EOF received (peer closed)",
+                   endpoint_.ToString());
       HandleError(std::make_error_code(std::errc::connection_reset));
       return;
     }
@@ -369,6 +375,9 @@ export class PeerConnection : public std::enable_shared_from_this<PeerConnection
     if (state_ != ConnectionState::Disconnected &&
         state_ != ConnectionState::Error) {
       StartRead();
+    } else {
+      std::println("[SOCKET] {} - Not continuing read, state={}",
+                   endpoint_.ToString(), static_cast<int>(state_));
     }
   }
 
@@ -562,8 +571,14 @@ export class PeerConnection : public std::enable_shared_from_this<PeerConnection
   // -------------------------------------------------------------------------
 
   void HandleError(std::error_code ec) {
+    std::println("[SOCKET] {} - HandleError: {} (state={})",
+                 endpoint_.ToString(), ec.message(), static_cast<int>(state_));
+
     if (state_ == ConnectionState::Error ||
         state_ == ConnectionState::Disconnected) {
+      std::println(
+          "[SOCKET] {} - Already in error/disconnected state, ignoring",
+          endpoint_.ToString());
       return;
     }
 
