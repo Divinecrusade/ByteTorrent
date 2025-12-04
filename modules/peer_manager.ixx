@@ -126,8 +126,13 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
   // IConnectionHandler implementation
   void OnConnected() override {
     info_.connected_at = std::chrono::steady_clock::now();
+    std::println("[PROTO] {} - Handshake complete, sending bitfield",
+                 info_.endpoint.ToString());
     // Send our bitfield after handshake
-    connection_->SendBitfield(piece_manager_.GetLocalBitfield());
+    auto local_bf = piece_manager_.GetLocalBitfield();
+    std::println("[PROTO] {} - Our bitfield: {} pieces set",
+                 info_.endpoint.ToString(), local_bf.CountPieces());
+    connection_->SendBitfield(local_bf);
   }
 
   void OnHandshakeComplete(peer_wire::HandshakeData const& hs) override {
@@ -153,12 +158,14 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
   }
 
   void OnChoke() override {
+    std::println("[PROTO] {} - Received CHOKE", info_.endpoint.ToString());
     info_.state.peer_choking = true;
     // Cancel pending requests
     piece_manager_.CancelAllRequests(connection_->GetPendingRequests());
   }
 
   void OnUnchoke() override {
+    std::println("[PROTO] {} - Received UNCHOKE!", info_.endpoint.ToString());
     info_.state.peer_choking = false;
     RequestMoreBlocks();
   }
@@ -172,15 +179,21 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
   }
 
   void OnHave(std::uint32_t piece_index) override {
+    std::println("[PROTO] {} - HAVE piece {}", info_.endpoint.ToString(),
+                 piece_index);
     info_.bitfield.SetPiece(piece_index);
     piece_manager_.OnPeerHave(piece_index);
     UpdateInterestState();
   }
 
   void OnBitfield(peer_wire::Bitfield const& bf) override {
+    std::println("[PROTO] {} - Received bitfield: {}/{} pieces",
+                 info_.endpoint.ToString(), bf.CountPieces(), bf.BitCount());
     info_.bitfield = bf;
     piece_manager_.OnPeerBitfield(bf);
     info_.is_seed = (bf.CountPieces() == bf.BitCount());
+    std::println("[PROTO] {} - Peer is_seed={}", info_.endpoint.ToString(),
+                 info_.is_seed);
     UpdateInterestState();
   }
 
@@ -201,6 +214,8 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
 
   void OnPiece(std::uint32_t piece_index, std::uint32_t offset,
                std::span<std::byte const> data) override {
+    std::println("[PROTO] {} - PIECE RECEIVED: idx={} off={} len={}",
+                 info_.endpoint.ToString(), piece_index, offset, data.size());
     info_.last_piece_time = std::chrono::steady_clock::now();
     info_.is_snubbed = false;
 
@@ -230,22 +245,39 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
   // Public interface
   void RequestMoreBlocks() {
     if (!connection_->CanRequest()) {
+      auto const& ps = connection_->GetPeerState();
+      std::println(
+          "[PROTO] {} - CanRequest=false (choking={}, interested={}, "
+          "connected={})",
+          info_.endpoint.ToString(), ps.peer_choking, ps.am_interested,
+          connection_->IsConnected());
       return;
     }
 
     std::size_t slots = connection_->AvailableRequestSlots();
+    std::println("[PROTO] {} - Requesting blocks, {} slots available",
+                 info_.endpoint.ToString(), slots);
     auto blocks = piece_manager_.SelectBlocks(info_.bitfield, slots);
+    std::println("[PROTO] {} - Selected {} blocks to request",
+                 info_.endpoint.ToString(), blocks.size());
 
     for (auto const& block : blocks) {
+      std::println("[PROTO] {} - REQUEST piece={} offset={} len={}",
+                   info_.endpoint.ToString(), block.piece_index, block.offset,
+                   block.length);
       connection_->SendRequest(block);
     }
   }
 
   void SetInterested(bool interested) {
     if (interested && !info_.state.am_interested) {
+      std::println("[PROTO] {} - Sending INTERESTED",
+                   info_.endpoint.ToString());
       connection_->SendInterested();
       info_.state.am_interested = true;
     } else if (!interested && info_.state.am_interested) {
+      std::println("[PROTO] {} - Sending NOT_INTERESTED",
+                   info_.endpoint.ToString());
       connection_->SendNotInterested();
       info_.state.am_interested = false;
     }
@@ -304,6 +336,8 @@ class ManagedPeer : public peer_wire::IConnectionHandler {
   void UpdateInterestState() {
     auto local_bf = piece_manager_.GetLocalBitfield();
     bool should_be_interested = info_.IsInteresting(local_bf);
+    std::println("[PROTO] {} - UpdateInterest: should_be_interested={}",
+                 info_.endpoint.ToString(), should_be_interested);
     SetInterested(should_be_interested);
   }
 

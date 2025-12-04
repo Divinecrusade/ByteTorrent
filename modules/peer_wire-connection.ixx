@@ -377,11 +377,14 @@ export class PeerConnection : public std::enable_shared_from_this<PeerConnection
     if (state_ == ConnectionState::Handshaking && !handshake_complete_) {
       if (auto handshake = receive_buffer_.TryExtractHandshake()) {
         OnHandshakeReceived(*handshake);
+        // Fall through to process any messages that arrived with handshake
+      } else {
+        return;  // Not enough data for handshake yet, wait for more
       }
-      return;
     }
 
-    // Process messages
+    // Process messages (runs after handshake completes, or if already
+    // connected)
     while (auto result = receive_buffer_.TryExtractMessage()) {
       OnMessageReceived(result->message);
     }
