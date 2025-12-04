@@ -6,7 +6,7 @@ module;
 // Asio must be included in global module fragment
 #ifdef BYTE_TORRENT_HAS_ASIO
 #define ASIO_STANDALONE
-#include <asio.hpp>
+import <asio.hpp>;
 #endif
 
 export module peer_wire:asio;
@@ -45,7 +45,7 @@ export class AsioSocket : public ISocket {
                                             asio::ip::tcp::endpoint const&) {
             callback(ec);
           });
-    } catch (std::exception const& e) {
+    } catch ([[maybe_unused]] std::exception const&) {
       callback(std::make_error_code(std::errc::connection_refused));
     }
   }

@@ -618,6 +618,11 @@ export class PeerManager {
     }
   }
 
+  void ProcessPendingRemovals() {
+    std::lock_guard lock{mutex_};
+    CleanupRemovedPeers();
+  }
+
   // -------------------------------------------------------------------------
   // Handler
   // -------------------------------------------------------------------------
@@ -654,9 +659,6 @@ export class PeerManager {
     if (handler_) {
       handler_->OnPeerDisconnected(endpoint, ec);
     }
-
-    // Cleanup
-    CleanupRemovedPeers();
   }
 
   void OnPieceCompleteInternal(std::uint32_t piece_index) {

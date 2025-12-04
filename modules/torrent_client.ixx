@@ -129,7 +129,8 @@ export class ITorrentClientHandler {
   virtual void OnDownloadComplete() = 0;
   virtual void OnError(std::string const& message) = 0;
   virtual void OnPeerConnected(peer_wire::PeerEndpoint const& endpoint) = 0;
-  virtual void OnPeerDisconnected(peer_wire::PeerEndpoint const& endpoint) = 0;
+  virtual void OnPeerDisconnected(peer_wire::PeerEndpoint const& endpoint,
+                                  std::error_code ec) = 0;
   virtual void OnTrackerResponse(std::size_t peer_count) = 0;
   virtual void OnTrackerError(std::string const& message) = 0;
 };
@@ -146,7 +147,8 @@ export class NullTorrentClientHandler : public ITorrentClientHandler {
   void OnDownloadComplete() override {}
   void OnError(std::string const&) override {}
   void OnPeerConnected(peer_wire::PeerEndpoint const&) override {}
-  void OnPeerDisconnected(peer_wire::PeerEndpoint const&) override {}
+  void OnPeerDisconnected(peer_wire::PeerEndpoint const&,
+                          std::error_code) override {}
   void OnTrackerResponse(std::size_t) override {}
   void OnTrackerError(std::string const&) override {}
 };
@@ -364,6 +366,10 @@ export class TorrentClient : public peer_manager::IPeerManagerHandler {
   void Update() {
     if (!running_) return;
 
+    std::lock_guard lock{mutex_};
+
+    peer_manager_.ProcessPendingRemovals();
+
     // Run scheduled tasks
     scheduler_.RunDueTasks();
 
@@ -398,9 +404,9 @@ export class TorrentClient : public peer_manager::IPeerManagerHandler {
   }
 
   void OnPeerDisconnected(peer_wire::PeerEndpoint const& endpoint,
-                          std::error_code) override {
+                          std::error_code ec) override {
     if (handler_) {
-      handler_->OnPeerDisconnected(endpoint);
+      handler_->OnPeerDisconnected(endpoint, ec);
     }
   }
 
@@ -500,6 +506,10 @@ export class TorrentClient : public peer_manager::IPeerManagerHandler {
     config_.download_dir = std::move(dir);
   }
 
+  void SetHttpClient(std::unique_ptr<tracker::IHttpClient> client) {
+    tracker_client_.SetHttpClient(std::move(client));
+  }
+  
   // -------------------------------------------------------------------------
   // Manual Peer Management
   // -------------------------------------------------------------------------
